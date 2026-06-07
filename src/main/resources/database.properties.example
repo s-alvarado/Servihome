@@ -1,0 +1,8 @@
+# Copiar a database.properties (o apuntar SCGO_DB_CONFIG al archivo real).
+# No commitear credenciales: database.properties esta en .gitignore.
+
+jdbc.host=db.example.cloud
+jdbc.port=3306
+jdbc.database=servihome
+jdbc.user=
+jdbc.password=

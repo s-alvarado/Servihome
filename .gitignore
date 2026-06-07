@@ -1,3 +1,9 @@
+# JDBC credentials (use database.properties.example as template)
+src/main/resources/database.properties
+
+# Maven
+target/
+
 # Compiled class file
 *.class
 

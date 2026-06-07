@@ -3,10 +3,12 @@ package com.servihome.scgo.vista;
 import com.servihome.scgo.controlador.OrdenController;
 import com.servihome.scgo.enums.EstadoOrden;
 import com.servihome.scgo.enums.TipoRecurso;
+import com.servihome.scgo.excepcion.SolapamientoException;
 import com.servihome.scgo.modelo.Activo;
 import com.servihome.scgo.modelo.CierreOrden;
 import com.servihome.scgo.modelo.OrdenTrabajo;
 import com.servihome.scgo.modelo.Personal;
+import com.servihome.scgo.modelo.Recurso;
 import com.servihome.scgo.modelo.Solicitud;
 
 import java.time.LocalDate;
@@ -52,12 +54,12 @@ public class GestionOrdenView {
     /** CU007: dispara validarYAsignar; feedback de exito o solapamiento. */
     public void asignarRecurso(int idOrden, int idRecurso, TipoRecurso tipo) {
         try {
-            boolean asignado = controller.validarYAsignar(idOrden, idRecurso, tipo);
-            if (asignado) {
-                mostrarResultado("Recurso asignado correctamente a la orden " + idOrden);
-            } else {
-                mostrarResultado("Asignacion rechazada: recurso no operativo o solapamiento detectado");
-            }
+            controller.validarYAsignar(idOrden, idRecurso, tipo);
+            mostrarResultado("Recurso asignado correctamente a la orden " + idOrden);
+        } catch (SolapamientoException e) {
+            mostrarResultado("Solapamiento detectado: " + e.getMessage());
+        } catch (IllegalArgumentException e) {
+            mostrarResultado("Asignacion rechazada: " + e.getMessage());
         } catch (RuntimeException e) {
             mostrarResultado("Error al asignar recurso: " + e.getMessage());
         }
@@ -138,6 +140,13 @@ public class GestionOrdenView {
             mostrarOrdenes(asignadas);
         }
 
+        mostrarResultado("--- Recursos operativos (polimorfismo) ---");
+        for (Recurso recurso : controller.listarRecursosOperativos()) {
+            mostrarResultado("  id=" + recurso.getId()
+                    + " | " + recurso.getDescripcion()
+                    + " | disponible=" + recurso.estaDisponible());
+        }
+
         mostrarResultado("--- Personal operativo ---");
         mostrarPersonal(controller.listarPersonalOperativo());
 
@@ -173,7 +182,7 @@ public class GestionOrdenView {
             return;
         }
         for (Personal p : personal) {
-            mostrarResultado("  id=" + p.getIdPersonal() + " | " + p.getNombre() + " | " + p.getEstado());
+            mostrarResultado("  id=" + p.getId() + " | " + p.getNombre() + " | " + p.getEstado());
         }
     }
 
@@ -183,7 +192,7 @@ public class GestionOrdenView {
             return;
         }
         for (Activo a : activos) {
-            mostrarResultado("  id=" + a.getIdActivo() + " | " + a.getDescripcion() + " | " + a.getEstado());
+            mostrarResultado("  id=" + a.getId() + " | " + a.getDescripcion() + " | " + a.getEstado());
         }
     }
 

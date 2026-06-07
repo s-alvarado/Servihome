@@ -2,24 +2,31 @@ package com.servihome.scgo.modelo;
 
 import com.servihome.scgo.enums.EstadoActivo;
 
-public class Activo {
+public class Activo extends Recurso {
 
-    private int idActivo;
     private int idTipo;
-    private String descripcion;
     private EstadoActivo estado;
 
-    /** R2: solo DISPONIBLE puede asignarse. */
+    public Activo() {
+    }
+
+    public Activo(int id, String descripcion, int idTipo, EstadoActivo estado) {
+        super(id, descripcion);
+        this.idTipo = idTipo;
+        this.estado = estado;
+    }
+
+    @Override
     public boolean estaDisponible() {
         return estado == EstadoActivo.DISPONIBLE;
     }
 
     public int getIdActivo() {
-        return idActivo;
+        return id;
     }
 
     public void setIdActivo(int idActivo) {
-        this.idActivo = idActivo;
+        this.id = idActivo;
     }
 
     public int getIdTipo() {
@@ -28,14 +35,6 @@ public class Activo {
 
     public void setIdTipo(int idTipo) {
         this.idTipo = idTipo;
-    }
-
-    public String getDescripcion() {
-        return descripcion;
-    }
-
-    public void setDescripcion(String descripcion) {
-        this.descripcion = descripcion;
     }
 
     public EstadoActivo getEstado() {

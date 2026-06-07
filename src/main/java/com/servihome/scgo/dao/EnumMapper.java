@@ -55,6 +55,22 @@ final class EnumMapper {
         };
     }
 
+    static String toDb(EstadoPersonal estado) {
+        return switch (estado) {
+            case ACTIVO -> "Activo";
+            case LICENCIA -> "Licencia";
+            case ENFERMEDAD -> "Enfermedad";
+        };
+    }
+
+    static String toDb(EstadoActivo estado) {
+        return switch (estado) {
+            case DISPONIBLE -> "Disponible";
+            case EN_REPARACION -> "En Reparacion";
+            case BAJA -> "Baja";
+        };
+    }
+
     static EstadoDevolucion fromDbEstadoDevolucion(String valor) {
         return switch (valor) {
             case "Buen Estado" -> EstadoDevolucion.BUEN_ESTADO;

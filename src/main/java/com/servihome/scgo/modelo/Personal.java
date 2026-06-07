@@ -2,24 +2,31 @@ package com.servihome.scgo.modelo;
 
 import com.servihome.scgo.enums.EstadoPersonal;
 
-public class Personal {
+public class Personal extends Recurso {
 
-    private int idPersonal;
     private int idEspecialidad;
-    private String nombre;
     private EstadoPersonal estado;
 
-    /** R2: solo ACTIVO puede asignarse. */
-    public boolean estaOperativo() {
+    public Personal() {
+    }
+
+    public Personal(int id, String nombre, int idEspecialidad, EstadoPersonal estado) {
+        super(id, nombre);
+        this.idEspecialidad = idEspecialidad;
+        this.estado = estado;
+    }
+
+    @Override
+    public boolean estaDisponible() {
         return estado == EstadoPersonal.ACTIVO;
     }
 
     public int getIdPersonal() {
-        return idPersonal;
+        return id;
     }
 
     public void setIdPersonal(int idPersonal) {
-        this.idPersonal = idPersonal;
+        this.id = idPersonal;
     }
 
     public int getIdEspecialidad() {
@@ -31,11 +38,11 @@ public class Personal {
     }
 
     public String getNombre() {
-        return nombre;
+        return descripcion;
     }
 
     public void setNombre(String nombre) {
-        this.nombre = nombre;
+        this.descripcion = nombre;
     }
 
     public EstadoPersonal getEstado() {

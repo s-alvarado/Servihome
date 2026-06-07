@@ -14,6 +14,18 @@ public class CierreOrden {
     private boolean averia;
     private String detalleAveria;
 
+    public CierreOrden() {
+    }
+
+    public CierreOrden(BigDecimal horasReales, String materiales,
+                       EstadoDevolucion estadoDevolucion, boolean averia, String detalleAveria) {
+        this.horasReales = horasReales;
+        this.materiales = materiales;
+        this.estadoDevolucion = estadoDevolucion;
+        this.averia = averia;
+        this.detalleAveria = detalleAveria;
+    }
+
     public int getIdCierre() {
         return idCierre;
     }

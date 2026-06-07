@@ -13,6 +13,18 @@ public class Solicitud {
     private String descripcion;
     private EstadoSolicitud estado;
 
+    public Solicitud() {
+    }
+
+    public Solicitud(int idCliente, int idPropiedad, LocalDate fechaIngreso,
+                     String descripcion, EstadoSolicitud estado) {
+        this.idCliente = idCliente;
+        this.idPropiedad = idPropiedad;
+        this.fechaIngreso = fechaIngreso;
+        this.descripcion = descripcion;
+        this.estado = estado;
+    }
+
     public int getIdSolicitud() {
         return idSolicitud;
     }

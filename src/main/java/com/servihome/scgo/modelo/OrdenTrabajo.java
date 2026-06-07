@@ -14,6 +14,18 @@ public class OrdenTrabajo {
     private LocalTime horaFin;
     private EstadoOrden estado;
 
+    public OrdenTrabajo() {
+    }
+
+    public OrdenTrabajo(int idSolicitud, LocalDate fechaServicio,
+                        LocalTime horaInicio, LocalTime horaFin, EstadoOrden estado) {
+        this.idSolicitud = idSolicitud;
+        this.fechaServicio = fechaServicio;
+        this.horaInicio = horaInicio;
+        this.horaFin = horaFin;
+        this.estado = estado;
+    }
+
     /** R3 invariante: horaFin > horaInicio (validar en capa de aplicacion). */
     public Franja getFranjaHoraria() {
         return new Franja(fechaServicio, horaInicio, horaFin);

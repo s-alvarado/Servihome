@@ -12,17 +12,21 @@ import com.servihome.scgo.enums.EstadoDevolucion;
 import com.servihome.scgo.enums.EstadoOrden;
 import com.servihome.scgo.enums.EstadoSolicitud;
 import com.servihome.scgo.enums.TipoRecurso;
+import com.servihome.scgo.excepcion.SolapamientoException;
 import com.servihome.scgo.modelo.Activo;
 import com.servihome.scgo.modelo.CierreOrden;
 import com.servihome.scgo.modelo.Franja;
 import com.servihome.scgo.modelo.OrdenTrabajo;
 import com.servihome.scgo.modelo.Personal;
+import com.servihome.scgo.modelo.Recurso;
 import com.servihome.scgo.modelo.Solicitud;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class OrdenController {
@@ -98,21 +102,33 @@ public class OrdenController {
         }
     }
 
-    /** CU007: validar recurso operativo (R2) y solapamiento (R1); registrar si OK. */
-    public boolean validarYAsignar(int idOrden, int idRecurso, TipoRecurso tipo) {
+    /**
+     * CU007: valida recurso operativo (R2, polimorfismo sobre List&lt;Recurso&gt;) y solapamiento (R1).
+     * @throws SolapamientoException si hay conflicto horario
+     */
+    public void validarYAsignar(int idOrden, int idRecurso, TipoRecurso tipo)
+            throws SolapamientoException {
         OrdenTrabajo orden = ordenDAO.buscarPorId(idOrden);
         if (orden == null || orden.getEstado() != EstadoOrden.ASIGNADA) {
-            return false;
+            throw new IllegalArgumentException("Orden no encontrada o no esta ASIGNADA: id=" + idOrden);
         }
 
-        if (!recursoOperativo(idRecurso, tipo)) {
-            return false;
+        List<Recurso> recursos = listarRecursosPorTipo(tipo);
+        Recurso recurso = buscarRecursoPorId(recursos, idRecurso);
+        if (recurso == null) {
+            throw new IllegalArgumentException("Recurso no encontrado: id=" + idRecurso);
+        }
+        if (!recursoEstaDisponibleEnLista(recursos, idRecurso)) {
+            throw new IllegalArgumentException("Recurso no operativo: id=" + idRecurso);
         }
 
         Franja franja = orden.getFranjaHoraria();
         if (asignacionDAO.existeSolapamientoEnOtraOrden(
                 idOrden, idRecurso, tipo, franja.getFecha(), franja.getInicio(), franja.getFin())) {
-            return false;
+            throw new SolapamientoException(
+                    "Solapamiento detectado para recurso id=" + idRecurso
+                            + " en " + franja.getFecha() + " "
+                            + franja.getInicio() + "-" + franja.getFin());
         }
 
         if (tipo == TipoRecurso.PERSONAL) {
@@ -120,7 +136,6 @@ public class OrdenController {
         } else {
             asignacionDAO.registrarActivo(idOrden, idRecurso);
         }
-        return true;
     }
 
     /** Delega en AsignacionDAO la regla R1 (desigualdad estricta). */
@@ -171,6 +186,15 @@ public class OrdenController {
         return ordenDAO.listarPorEstado(EstadoOrden.ASIGNADA);
     }
 
+    /** Lista heterogenea ordenada por descripcion (polimorfismo + I3). */
+    public List<Recurso> listarRecursosOperativos() {
+        List<Recurso> recursos = new ArrayList<>();
+        recursos.addAll(personalDAO.listarOperativos());
+        recursos.addAll(activoDAO.listarDisponibles());
+        recursos.sort(Comparator.comparing(Recurso::getDescripcion, String.CASE_INSENSITIVE_ORDER));
+        return recursos;
+    }
+
     public List<Personal> listarPersonalOperativo() {
         return personalDAO.listarOperativos();
     }
@@ -183,13 +207,31 @@ public class OrdenController {
         return ordenDAO.buscarPorId(idOrden);
     }
 
-    private boolean recursoOperativo(int idRecurso, TipoRecurso tipo) {
-        if (tipo == TipoRecurso.PERSONAL) {
-            Personal personal = personalDAO.buscarPorId(idRecurso);
-            return personal != null && personal.estaOperativo();
+    /** Busqueda lineal sobre List&lt;Recurso&gt; (I3). */
+    public Recurso buscarRecursoPorId(List<Recurso> recursos, int idRecurso) {
+        for (Recurso recurso : recursos) {
+            if (recurso.getId() == idRecurso) {
+                return recurso;
+            }
         }
-        Activo activo = activoDAO.buscarPorId(idRecurso);
-        return activo != null && activo.estaDisponible();
+        return null;
+    }
+
+    /** Polimorfismo: invoca estaDisponible() sin conocer el tipo concreto. */
+    public boolean recursoEstaDisponibleEnLista(List<Recurso> recursos, int idRecurso) {
+        Recurso recurso = buscarRecursoPorId(recursos, idRecurso);
+        return recurso != null && recurso.estaDisponible();
+    }
+
+    private List<Recurso> listarRecursosPorTipo(TipoRecurso tipo) {
+        List<Recurso> recursos = new ArrayList<>();
+        if (tipo == TipoRecurso.PERSONAL) {
+            recursos.addAll(personalDAO.listarTodos());
+        } else {
+            recursos.addAll(activoDAO.listarTodos());
+        }
+        recursos.sort(Comparator.comparing(Recurso::getDescripcion, String.CASE_INSENSITIVE_ORDER));
+        return recursos;
     }
 
     private void validarRangoHorario(LocalTime horaInicio, LocalTime horaFin) {

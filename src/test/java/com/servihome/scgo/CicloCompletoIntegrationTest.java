@@ -26,6 +26,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -77,8 +78,10 @@ class CicloCompletoIntegrationTest {
         assertTrue(orden.getIdOrden() > 0);
         assertEquals(EstadoOrden.ASIGNADA, orden.getEstado());
 
-        assertTrue(controller.validarYAsignar(orden.getIdOrden(), ID_PERSONAL, TipoRecurso.PERSONAL));
-        assertTrue(controller.validarYAsignar(orden.getIdOrden(), ID_ACTIVO, TipoRecurso.ACTIVO));
+        assertDoesNotThrow(() -> controller.validarYAsignar(
+                orden.getIdOrden(), ID_PERSONAL, TipoRecurso.PERSONAL));
+        assertDoesNotThrow(() -> controller.validarYAsignar(
+                orden.getIdOrden(), ID_ACTIVO, TipoRecurso.ACTIVO));
 
         CierreOrden cierre = new CierreOrden();
         cierre.setHorasReales(new BigDecimal("4.00"));

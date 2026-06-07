@@ -1,44 +1,23 @@
--- =====================================================================
--- Sistema Centralizado de Gestion Operativa (SCGO) - ServiHome
--- Script 01: Creacion de la base de datos y tablas
--- Motor: MySQL 8.x  /  Codificacion: utf8mb4  /  Engine: InnoDB (soporte FK + ACID)
--- Autor: Alvarado Santiago Ignacio - Legajo VINF011046
--- =====================================================================
-
-DROP DATABASE IF EXISTS servihome;
-CREATE DATABASE servihome
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-USE servihome;
-
--- ---------------------------------------------------------------------
--- Tablas de catalogo (3FN: se extraen para evitar redundancia textual)
--- ---------------------------------------------------------------------
-
-CREATE TABLE especialidad (
+CREATE TABLE IF NOT EXISTS especialidad (
     id_especialidad INT AUTO_INCREMENT PRIMARY KEY,
     nombre          VARCHAR(60) NOT NULL UNIQUE
 ) ENGINE=InnoDB;
 
-CREATE TABLE tipo_activo (
+CREATE TABLE IF NOT EXISTS tipo_activo (
     id_tipo INT AUTO_INCREMENT PRIMARY KEY,
-    nombre  VARCHAR(40) NOT NULL UNIQUE   -- 'Vehiculo' / 'Maquinaria'
+    nombre  VARCHAR(40) NOT NULL UNIQUE
 ) ENGINE=InnoDB;
 
--- ---------------------------------------------------------------------
--- Entidades principales
--- ---------------------------------------------------------------------
-
-CREATE TABLE cliente (
+CREATE TABLE IF NOT EXISTS cliente (
     id_cliente    INT AUTO_INCREMENT PRIMARY KEY,
     razon_social  VARCHAR(120) NOT NULL,
     tipo          ENUM('B2B','B2C') NOT NULL,
     telefono      VARCHAR(30),
     email         VARCHAR(120),
-    activo        BOOLEAN NOT NULL DEFAULT TRUE   -- baja logica (RF001)
+    activo        BOOLEAN NOT NULL DEFAULT TRUE
 ) ENGINE=InnoDB;
 
-CREATE TABLE propiedad (
+CREATE TABLE IF NOT EXISTS propiedad (
     id_propiedad     INT AUTO_INCREMENT PRIMARY KEY,
     id_cliente       INT NOT NULL,
     direccion        VARCHAR(160) NOT NULL,
@@ -47,7 +26,7 @@ CREATE TABLE propiedad (
         FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)
 ) ENGINE=InnoDB;
 
-CREATE TABLE personal (
+CREATE TABLE IF NOT EXISTS personal (
     id_personal      INT AUTO_INCREMENT PRIMARY KEY,
     id_especialidad  INT NOT NULL,
     nombre           VARCHAR(120) NOT NULL,
@@ -56,7 +35,7 @@ CREATE TABLE personal (
         FOREIGN KEY (id_especialidad) REFERENCES especialidad(id_especialidad)
 ) ENGINE=InnoDB;
 
-CREATE TABLE activo (
+CREATE TABLE IF NOT EXISTS activo (
     id_activo    INT AUTO_INCREMENT PRIMARY KEY,
     id_tipo      INT NOT NULL,
     descripcion  VARCHAR(120) NOT NULL,
@@ -65,11 +44,7 @@ CREATE TABLE activo (
         FOREIGN KEY (id_tipo) REFERENCES tipo_activo(id_tipo)
 ) ENGINE=InnoDB;
 
--- ---------------------------------------------------------------------
--- Tablas transaccionales
--- ---------------------------------------------------------------------
-
-CREATE TABLE solicitud (
+CREATE TABLE IF NOT EXISTS solicitud (
     id_solicitud  INT AUTO_INCREMENT PRIMARY KEY,
     id_cliente    INT NOT NULL,
     id_propiedad  INT NOT NULL,
@@ -82,7 +57,7 @@ CREATE TABLE solicitud (
         FOREIGN KEY (id_propiedad) REFERENCES propiedad(id_propiedad)
 ) ENGINE=InnoDB;
 
-CREATE TABLE orden_trabajo (
+CREATE TABLE IF NOT EXISTS orden_trabajo (
     id_orden       INT AUTO_INCREMENT PRIMARY KEY,
     id_solicitud   INT NOT NULL,
     fecha_servicio DATE NOT NULL,
@@ -94,10 +69,7 @@ CREATE TABLE orden_trabajo (
     CONSTRAINT chk_rango_horario CHECK (hora_fin > hora_inicio)
 ) ENGINE=InnoDB;
 
--- Tablas de asignacion: resuelven el N:M Orden <-> Recurso.
--- Sobre estas tablas opera la validacion de solapamiento (RF007).
-
-CREATE TABLE asignacion_personal (
+CREATE TABLE IF NOT EXISTS asignacion_personal (
     id_asig_pers INT AUTO_INCREMENT PRIMARY KEY,
     id_orden     INT NOT NULL,
     id_personal  INT NOT NULL,
@@ -108,7 +80,7 @@ CREATE TABLE asignacion_personal (
     CONSTRAINT uq_asigpers UNIQUE (id_orden, id_personal)
 ) ENGINE=InnoDB;
 
-CREATE TABLE asignacion_activo (
+CREATE TABLE IF NOT EXISTS asignacion_activo (
     id_asig_act INT AUTO_INCREMENT PRIMARY KEY,
     id_orden    INT NOT NULL,
     id_activo   INT NOT NULL,
@@ -119,9 +91,9 @@ CREATE TABLE asignacion_activo (
     CONSTRAINT uq_asigact UNIQUE (id_orden, id_activo)
 ) ENGINE=InnoDB;
 
-CREATE TABLE cierre_orden (
+CREATE TABLE IF NOT EXISTS cierre_orden (
     id_cierre         INT AUTO_INCREMENT PRIMARY KEY,
-    id_orden          INT NOT NULL UNIQUE,        -- 1:1 con la orden
+    id_orden          INT NOT NULL UNIQUE,
     horas_reales      DECIMAL(5,2) NOT NULL,
     materiales        VARCHAR(255),
     estado_devolucion ENUM('Buen Estado','Averiado') NOT NULL DEFAULT 'Buen Estado',

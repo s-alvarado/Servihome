@@ -29,6 +29,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Coordina los casos de uso del nucleo de gestion de ordenes (CU006 generar,
+ * CU007 asignar/validar, CU008 cerrar). Orquesta los DAO y concentra aqui las
+ * reglas de negocio y el control transaccional, manteniendo a la vista y a la
+ * persistencia sin logica de dominio.
+ */
 public class OrdenController {
 
     private final OrdenTrabajoDAO ordenDAO;
@@ -83,6 +89,10 @@ public class OrdenController {
         Connection conn = null;
         try {
             conn = DatabaseConfig.getConnection();
+            // Transaccion: crear la orden y pasar la solicitud a PROGRAMADA deben
+            // ocurrir como una unidad. setAutoCommit(false) abre la transaccion para
+            // que ambos cambios se confirmen juntos (commit) o ninguno (rollback) y
+            // no quede una solicitud programada sin orden, ni viceversa.
             conn.setAutoCommit(false);
             ordenDAO.insertar(orden, conn);
             solicitudDAO.actualizarEstado(idSolicitud, EstadoSolicitud.PROGRAMADA, conn);
@@ -91,6 +101,7 @@ public class OrdenController {
         } catch (SQLException e) {
             if (conn != null) {
                 try {
+                    // Ante cualquier fallo se revierte todo: la BD vuelve al estado previo.
                     conn.rollback();
                 } catch (SQLException rollbackEx) {
                     throw new DaoException("Error en rollback al generar orden", rollbackEx);
@@ -113,6 +124,10 @@ public class OrdenController {
             throw new IllegalArgumentException("Orden no encontrada o no esta ASIGNADA: id=" + idOrden);
         }
 
+        // Se trabaja sobre una List<Recurso> (tipo base). La validacion de
+        // disponibilidad invoca estaDisponible() de forma uniforme, sin if por tipo:
+        // el polimorfismo resuelve en tiempo de ejecucion la regla de Personal o Activo.
+        // Agregar un nuevo tipo de recurso no obliga a tocar esta validacion.
         List<Recurso> recursos = listarRecursosPorTipo(tipo);
         Recurso recurso = buscarRecursoPorId(recursos, idRecurso);
         if (recurso == null) {
@@ -144,7 +159,10 @@ public class OrdenController {
         return asignacionDAO.existeSolapamiento(idRecurso, tipo, fecha, ini, fin);
     }
 
-    /** CU008: cierre transaccional (R4). */
+    /**
+     * CU008: cierre transaccional (R4). Registrar el cierre y pasar la orden a
+     * FINALIZADA forman una unica operacion atomica (ver bloque transaccional abajo).
+     */
     public void cerrarOrden(int idOrden, CierreOrden cierre) {
         OrdenTrabajo orden = ordenDAO.buscarPorId(idOrden);
         if (orden == null) {
@@ -160,6 +178,11 @@ public class OrdenController {
         Connection conn = null;
         try {
             conn = DatabaseConfig.getConnection();
+            // Atomicidad del cierre (R4): insertar el cierre y marcar la orden como
+            // FINALIZADA deben ser indivisibles. setAutoCommit(false) agrupa ambos en
+            // una transaccion; sin esto podria persistirse el cierre pero quedar la
+            // orden ASIGNADA (o al reves), un estado inconsistente. Esto justifica usar
+            // motor InnoDB en MySQL: es el que soporta transacciones (MyISAM no).
             conn.setAutoCommit(false);
             cierreDAO.insertar(cierre, conn);
             ordenDAO.actualizarEstado(idOrden, EstadoOrden.FINALIZADA, conn);
@@ -167,6 +190,7 @@ public class OrdenController {
         } catch (SQLException e) {
             if (conn != null) {
                 try {
+                    // Si algo falla, se deshacen ambos cambios juntos.
                     conn.rollback();
                 } catch (SQLException rollbackEx) {
                     throw new DaoException("Error en rollback del cierre orden id=" + idOrden, rollbackEx);

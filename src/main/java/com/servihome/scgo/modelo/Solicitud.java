@@ -4,6 +4,12 @@ import com.servihome.scgo.enums.EstadoSolicitud;
 
 import java.time.LocalDate;
 
+/**
+ * Solicitud de servicio del cliente. Encapsulamiento: atributos privados accedidos
+ * solo por getters/setters. El estado (PENDIENTE -&gt; PROGRAMADA ...) lo transiciona
+ * el controlador dentro de la transaccion del CU006, no se modifica suelto, para
+ * mantener la coherencia con la orden generada.
+ */
 public class Solicitud {
 
     private int idSolicitud;

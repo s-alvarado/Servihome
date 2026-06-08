@@ -10,8 +10,14 @@ import java.sql.SQLException;
 import java.util.Properties;
 
 /**
- * Configuracion JDBC externa. Host, usuario y clave se leen de archivo;
- * no se hardcodean credenciales ni se asume localhost (infra Cloud).
+ * Configuracion JDBC externa. Host, puerto, base, usuario y clave se leen de un
+ * archivo de propiedades (via variable de entorno SCGO_DB_CONFIG, system property
+ * o classpath), NO se hardcodean ni se asume localhost.
+ *
+ * Decision de infraestructura Cloud: la BD MySQL vive en un host gestionado y
+ * variable segun el entorno (dev/QA/prod), por lo que la conexion debe configurarse
+ * por entorno sin recompilar. Hardcodear localhost/credenciales rompe el despliegue
+ * en la nube y expone secretos en el codigo fuente.
  */
 public final class DatabaseConfig {
 

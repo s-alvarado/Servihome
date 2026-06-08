@@ -13,9 +13,18 @@ import java.time.LocalTime;
 public class AsignacionDAO {
 
     /**
-     * R1: solapamiento si ini_existente &lt; fin_nuevo AND fin_existente &gt; ini_nuevo
-     * (desigualdad estricta; turnos contiguos no solapan).
-     * Solo ordenes en estado ASIGNADA.
+     * R1 (CU007): detecta sobreasignacion de un recurso, el problema central que
+     * ServiHome busca evitar (un mismo tecnico/equipo comprometido en dos servicios
+     * a la vez). La condicion de solape entre intervalos es:
+     *   ini_existente &lt; fin_nuevo  AND  fin_existente &gt; ini_nuevo
+     * que en el SQL se expresa como hora_inicio &lt; finNuevo AND hora_fin &gt; iniNuevo.
+     *
+     * La desigualdad es ESTRICTA a proposito: dos turnos contiguos NO son conflicto.
+     * Ej.: uno termina 12:00 y el siguiente empieza 12:00 -> hora_fin (12:00) &gt; ini (12:00)
+     * es falso, por lo que no se reporta solape. Si fuera &gt;= se prohibirian
+     * asignaciones validas back-to-back.
+     *
+     * Solo cuentan ordenes en estado 'Asignada' (las finalizadas/canceladas no bloquean).
      */
     private static final String SOLAPAMIENTO_PERSONAL = """
             SELECT ot.id_orden
@@ -66,6 +75,8 @@ public class AsignacionDAO {
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, idRecurso);
             ps.setObject(2, fecha);
+            // Cruce intencional: el fin del intervalo nuevo se compara contra hora_inicio
+            // existente y el inicio nuevo contra hora_fin existente (condicion de solape R1).
             ps.setObject(3, fin);
             ps.setObject(4, ini);
             if (idOrdenExcluir > 0) {

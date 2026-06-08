@@ -4,10 +4,19 @@ import com.servihome.scgo.enums.EstadoDevolucion;
 
 import java.math.BigDecimal;
 
+/**
+ * Datos del cierre de una orden (CU008). Encapsulamiento: atributos privados con
+ * acceso por setters/getters; las invariantes de negocio (R5: si hay averia, el
+ * detalle es obligatorio y el estado debe ser AVERIADO) se validan en el controlador
+ * antes de persistir, manteniendo la entidad como portadora de datos consistente.
+ */
 public class CierreOrden {
 
     private int idCierre;
     private int idOrden;
+    // BigDecimal y no double: las horas reales son un valor con decimales sobre el
+    // que puede haber calculos/facturacion; double introduce errores de redondeo
+    // binario. BigDecimal da precision decimal exacta.
     private BigDecimal horasReales;
     private String materiales;
     private EstadoDevolucion estadoDevolucion;

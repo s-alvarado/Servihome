@@ -8,6 +8,8 @@ import java.time.LocalTime;
  */
 public class Franja {
 
+    // LocalDate/LocalTime (java.time): tipos inmutables que separan fecha y hora,
+    // comparables directamente y sin la ambiguedad de zona horaria de java.util.Date.
     private LocalDate fecha;
     private LocalTime inicio;
     private LocalTime fin;

@@ -42,6 +42,12 @@ public class OrdenTrabajoDAO implements DAO<OrdenTrabajo> {
             ORDER BY id_orden
             """;
 
+    private static final String SELECT_TODAS = """
+            SELECT id_orden, id_solicitud, fecha_servicio, hora_inicio, hora_fin, estado
+            FROM orden_trabajo
+            ORDER BY id_orden
+            """;
+
     @Override
     public int insertar(OrdenTrabajo obj) {
         try (Connection conn = DatabaseConfig.getConnection()) {
@@ -127,6 +133,21 @@ public class OrdenTrabajoDAO implements DAO<OrdenTrabajo> {
             }
         } catch (SQLException e) {
             throw new DaoException("Error al actualizar estado orden id=" + idOrden, e);
+        }
+    }
+
+    /** Todas las ordenes. ArrayList porque la cantidad de filas no se conoce antes. */
+    public List<OrdenTrabajo> listarTodas() {
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SELECT_TODAS);
+             ResultSet rs = ps.executeQuery()) {
+            List<OrdenTrabajo> lista = new ArrayList<>();
+            while (rs.next()) {
+                lista.add(mapRow(rs));
+            }
+            return lista;
+        } catch (SQLException e) {
+            throw new DaoException("Error al listar todas las ordenes", e);
         }
     }
 

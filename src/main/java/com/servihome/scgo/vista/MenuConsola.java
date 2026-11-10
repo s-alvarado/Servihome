@@ -10,6 +10,17 @@ import java.util.Scanner;
  */
 public class MenuConsola {
 
+    // I4: arreglo de opciones del menu, de tamano fijo y conocido
+    private static final String[] OPCIONES_MENU = {
+            "  1. Generar orden de trabajo      (CU006)",
+            "  2. Asignar recurso a orden       (CU007)",
+            "  3. Cerrar orden de trabajo       (CU008)",
+            "  4. Consultar estado del sistema",
+            "  5. Ciclo completo guiado         (CU006->007->008)",
+            "  6. Ver registro de operaciones (ultimas 10)",
+            "  0. Salir"
+    };
+
     private final GestionOrdenView view;
     private final OrdenController controller;
     private final Scanner scanner;
@@ -47,12 +58,9 @@ public class MenuConsola {
     private void mostrarMenu() {
         System.out.println();
         System.out.println("========== SCGO - Menu principal ==========");
-        System.out.println("  1. Generar orden de trabajo      (CU006)");
-        System.out.println("  2. Asignar recurso a orden       (CU007)");
-        System.out.println("  3. Cerrar orden de trabajo       (CU008)");
-        System.out.println("  4. Consultar estado del sistema");
-        System.out.println("  5. Ciclo completo guiado         (CU006->007->008)");
-        System.out.println("  0. Salir");
+        for (int i = 0; i < OPCIONES_MENU.length; i++) {
+            System.out.println(OPCIONES_MENU[i]);
+        }
         System.out.println("===========================================");
     }
 

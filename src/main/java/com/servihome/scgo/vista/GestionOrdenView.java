@@ -182,6 +182,14 @@ public class GestionOrdenView {
 
         mostrarResultado("--- Activos disponibles ---");
         mostrarActivos(controller.listarActivosDisponibles());
+
+        mostrarResultado("--- Resumen de ordenes por estado ---");
+        EstadoOrden[] estados = EstadoOrden.values();
+        int[] contadores = controller.contarOrdenesPorEstado();
+        // I4: arreglo de estados y arreglo de contadores recorridos en paralelo
+        for (int i = 0; i < estados.length; i++) {
+            mostrarResultado("  " + estados[i] + ": " + contadores[i]);
+        }
     }
 
     public void mostrarResultado(String mensaje) {

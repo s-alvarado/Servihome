@@ -202,6 +202,25 @@ public class OrdenController {
         return ordenDAO.listarPorEstado(EstadoOrden.ASIGNADA);
     }
 
+    /**
+     * Resumen por estado para la opcion 4. El arreglo tiene un casillero por
+     * cada valor de EstadoOrden; la lista viene de la base y es de tamano variable.
+     */
+    public int[] contarOrdenesPorEstado() {
+        return contarPorEstado(ordenDAO.listarTodas());
+    }
+
+    /** Conteo puro, sin base de datos, para poder probarlo con una lista armada a mano. */
+    public static int[] contarPorEstado(List<OrdenTrabajo> ordenes) {
+        EstadoOrden[] estados = EstadoOrden.values();
+        // I4: arreglo de contadores indexado por EstadoOrden.ordinal()
+        int[] contadores = new int[estados.length];
+        for (OrdenTrabajo orden : ordenes) {
+            contadores[orden.getEstado().ordinal()]++;
+        }
+        return contadores;
+    }
+
     /** Lista heterogenea ordenada por descripcion (polimorfismo + I3). */
     public List<Recurso> listarRecursosOperativos() {
         List<Recurso> recursos = new ArrayList<>();

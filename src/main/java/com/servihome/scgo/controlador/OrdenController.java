@@ -86,31 +86,17 @@ public class OrdenController {
         orden.setHoraFin(horaFin);
         orden.setEstado(EstadoOrden.ASIGNADA);
 
-        Connection conn = null;
-        try {
-            conn = DatabaseConfig.getConnection();
-            // Transaccion: crear la orden y pasar la solicitud a PROGRAMADA deben
-            // ocurrir como una unidad. setAutoCommit(false) abre la transaccion para
-            // que ambos cambios se confirmen juntos (commit) o ninguno (rollback) y
-            // no quede una solicitud programada sin orden, ni viceversa.
-            conn.setAutoCommit(false);
-            ordenDAO.insertar(orden, conn);
-            solicitudDAO.actualizarEstado(idSolicitud, EstadoSolicitud.PROGRAMADA, conn);
-            conn.commit();
-            return orden;
-        } catch (SQLException e) {
-            if (conn != null) {
-                try {
-                    // Ante cualquier fallo se revierte todo: la BD vuelve al estado previo.
-                    conn.rollback();
-                } catch (SQLException rollbackEx) {
-                    throw new DaoException("Error en rollback al generar orden", rollbackEx);
-                }
-            }
-            throw new DaoException("Error transaccional al generar orden", e);
-        } finally {
-            cerrarConexion(conn);
-        }
+        // Transaccion: crear la orden y pasar la solicitud a PROGRAMADA deben
+        // ocurrir como una unidad. Si el segundo paso falla, el primero no puede
+        // quedar confirmado.
+        ejecutarEnTransaccion(
+                "Error en rollback al generar orden",
+                "Error transaccional al generar orden",
+                conn -> {
+                    ordenDAO.insertar(orden, conn);
+                    solicitudDAO.actualizarEstado(idSolicitud, EstadoSolicitud.PROGRAMADA, conn);
+                });
+        return orden;
     }
 
     /**
@@ -175,31 +161,16 @@ public class OrdenController {
 
         cierre.setIdOrden(idOrden);
 
-        Connection conn = null;
-        try {
-            conn = DatabaseConfig.getConnection();
-            // Atomicidad del cierre (R4): insertar el cierre y marcar la orden como
-            // FINALIZADA deben ser indivisibles. setAutoCommit(false) agrupa ambos en
-            // una transaccion; sin esto podria persistirse el cierre pero quedar la
-            // orden ASIGNADA (o al reves), un estado inconsistente. Esto justifica usar
-            // motor InnoDB en MySQL: es el que soporta transacciones (MyISAM no).
-            conn.setAutoCommit(false);
-            cierreDAO.insertar(cierre, conn);
-            ordenDAO.actualizarEstado(idOrden, EstadoOrden.FINALIZADA, conn);
-            conn.commit();
-        } catch (SQLException e) {
-            if (conn != null) {
-                try {
-                    // Si algo falla, se deshacen ambos cambios juntos.
-                    conn.rollback();
-                } catch (SQLException rollbackEx) {
-                    throw new DaoException("Error en rollback del cierre orden id=" + idOrden, rollbackEx);
-                }
-            }
-            throw new DaoException("Error transaccional al cerrar orden id=" + idOrden, e);
-        } finally {
-            cerrarConexion(conn);
-        }
+        // Atomicidad del cierre (R4): insertar el cierre y marcar la orden como
+        // FINALIZADA deben ser indivisibles. Sin transaccion podria persistirse el
+        // cierre y quedar la orden ASIGNADA. InnoDB es el motor que lo permite.
+        ejecutarEnTransaccion(
+                "Error en rollback del cierre orden id=" + idOrden,
+                "Error transaccional al cerrar orden id=" + idOrden,
+                conn -> {
+                    cierreDAO.insertar(cierre, conn);
+                    ordenDAO.actualizarEstado(idOrden, EstadoOrden.FINALIZADA, conn);
+                });
     }
 
     public List<Solicitud> listarSolicitudesPendientes() {
@@ -281,14 +252,51 @@ public class OrdenController {
         }
     }
 
+    /**
+     * Agrupa commit y rollback. Los DAO convierten SQLException en DaoException
+     * (no chequeada): si solo se capturara SQLException, el fallo saltaria el
+     * rollback y el finally confirmaria el cambio parcial al reactivar autoCommit.
+     */
+    private void ejecutarEnTransaccion(String mensajeRollback, String mensajeError,
+                                       OperacionTransaccional operacion) {
+        Connection conn = null;
+        try {
+            conn = DatabaseConfig.getConnection();
+            conn.setAutoCommit(false);
+            operacion.ejecutar(conn);
+            conn.commit();
+        } catch (SQLException | DaoException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackEx) {
+                    throw new DaoException(mensajeRollback, rollbackEx);
+                }
+            }
+            if (e instanceof DaoException daoEx) {
+                throw daoEx;
+            }
+            throw new DaoException(mensajeError, e);
+        } finally {
+            cerrarConexion(conn);
+        }
+    }
+
     private void cerrarConexion(Connection conn) {
         if (conn != null) {
             try {
+                // Riesgo JDBC: setAutoCommit(true) con una transaccion todavia abierta
+                // la CONFIRMA. Solo se llama despues de commit o rollback.
                 conn.setAutoCommit(true);
                 conn.close();
             } catch (SQLException e) {
                 throw new DaoException("Error al cerrar conexion JDBC", e);
             }
         }
+    }
+
+    @FunctionalInterface
+    private interface OperacionTransaccional {
+        void ejecutar(Connection conn);
     }
 }

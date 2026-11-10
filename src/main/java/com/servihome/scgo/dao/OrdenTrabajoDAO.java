@@ -113,12 +113,18 @@ public class OrdenTrabajoDAO implements DAO<OrdenTrabajo> {
         }
     }
 
-    /** Variante para CU008: participa en la transaccion del controlador (R4). */
+    /**
+     * Variante para CU008: participa en la transaccion del controlador (R4).
+     * Exige una fila afectada: un id inexistente debe abortar la transaccion
+     * y no confirmar el resto de los cambios.
+     */
     public void actualizarEstado(int idOrden, EstadoOrden estado, Connection conn) {
         try (PreparedStatement ps = conn.prepareStatement(UPDATE_ESTADO)) {
             ps.setString(1, EnumMapper.toDb(estado));
             ps.setInt(2, idOrden);
-            ps.executeUpdate();
+            if (ps.executeUpdate() != 1) {
+                throw new DaoException("Orden no encontrada: id=" + idOrden);
+            }
         } catch (SQLException e) {
             throw new DaoException("Error al actualizar estado orden id=" + idOrden, e);
         }

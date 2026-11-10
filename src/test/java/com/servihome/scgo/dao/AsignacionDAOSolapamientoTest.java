@@ -3,14 +3,17 @@ package com.servihome.scgo.dao;
 import com.servihome.scgo.config.DatabaseConfig;
 import com.servihome.scgo.controlador.OrdenController;
 import com.servihome.scgo.enums.TipoRecurso;
+import com.servihome.scgo.registro.RegistroArchivo;
 import com.servihome.scgo.test.DbTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -34,6 +37,9 @@ class AsignacionDAOSolapamientoTest {
     private OrdenController controller;
     private Connection conn;
 
+    @TempDir
+    Path tempDir;
+
     @BeforeEach
     void setUp() throws SQLException {
         assumeTrue(DbTestSupport.isDbAvailable());
@@ -44,7 +50,8 @@ class AsignacionDAOSolapamientoTest {
                 asignacionDAO,
                 new CierreOrdenDAO(),
                 new PersonalDAO(),
-                new ActivoDAO());
+                new ActivoDAO(),
+                new RegistroArchivo(tempDir.resolve("scgo.log")));
 
         conn = DatabaseConfig.getConnection();
         conn.setAutoCommit(false);

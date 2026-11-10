@@ -14,13 +14,16 @@ import com.servihome.scgo.enums.EstadoSolicitud;
 import com.servihome.scgo.enums.TipoRecurso;
 import com.servihome.scgo.modelo.CierreOrden;
 import com.servihome.scgo.modelo.OrdenTrabajo;
+import com.servihome.scgo.registro.RegistroArchivo;
 import com.servihome.scgo.test.DbTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -42,6 +45,9 @@ class CicloCompletoIntegrationTest {
     private OrdenController controller;
     private Connection conn;
 
+    @TempDir
+    Path tempDir;
+
     @BeforeEach
     void setUp() throws SQLException {
         assumeTrue(DbTestSupport.isDbAvailable());
@@ -51,7 +57,8 @@ class CicloCompletoIntegrationTest {
                 new AsignacionDAO(),
                 new CierreOrdenDAO(),
                 new PersonalDAO(),
-                new ActivoDAO());
+                new ActivoDAO(),
+                new RegistroArchivo(tempDir.resolve("scgo.log")));
         conn = DatabaseConfig.getConnection();
         conn.setAutoCommit(false);
         insertarDatos();

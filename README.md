@@ -44,6 +44,7 @@ com.servihome.scgo
 ├── dao/          Acceso JDBC
 ├── enums/        Estados del dominio
 ├── modelo/       POJOs / entidades
+├── registro/     RegistroOperaciones, RegistroArchivo
 └── vista/        MenuConsola, GestionOrdenView
 ```
 
@@ -133,13 +134,18 @@ Al ejecutar la aplicación aparece el menú principal:
   3. Cerrar orden de trabajo       (CU008)
   4. Consultar estado del sistema
   5. Ciclo completo guiado         (CU006->007->008)
+  6. Ver registro de operaciones (ultimas 10)
   0. Salir
 ===========================================
 ```
 
 ### Opción 4 — Consultar estado
 
-Muestra solicitudes pendientes, órdenes asignadas, personal operativo y activos disponibles. Útil para conocer los IDs antes de operar.
+Muestra solicitudes pendientes, órdenes asignadas, personal operativo, activos disponibles y un resumen de órdenes por estado (`ASIGNADA`, `FINALIZADA`, `CANCELADA`). Útil para conocer los IDs antes de operar.
+
+### Opción 6 — Registro de operaciones
+
+Muestra las últimas 10 líneas del archivo de operaciones, o `(sin registros)` si todavía no hay ninguna.
 
 ### Opción 5 — Ciclo completo guiado (recomendado)
 
@@ -201,6 +207,33 @@ Al finalizar deberías ver: **"Ciclo completo exitoso. Orden X FINALIZADA."**
 | **R5** | Si `averia = true`, `detalleAveria` es obligatorio y `estadoDevolucion` debe ser `AVERIADO` |
 | **R6** | Con avería, al menos un activo y todos asignados a la orden; sin avería, el arreglo de activos queda vacío. El cambio de estado de esos activos entra en la misma transacción del cierre |
 
+## Registro de operaciones
+
+Cada caso de uso deja una línea en un archivo **después** de confirmar la operación (o, si la transacción hace rollback, una línea `ERROR_SISTEMA`). Un fallo al escribir el archivo no interrumpe el negocio: solo se avisa por la salida de error.
+
+| Evento | Cuándo |
+|--------|--------|
+| `ORDEN_GENERADA` | CU006 confirmado |
+| `RECURSO_ASIGNADO` | CU007 confirmado |
+| `ASIGNACION_RECHAZADA` | Recurso no operativo o solapamiento, antes de lanzar la excepción |
+| `ORDEN_CERRADA` | CU008 confirmado |
+| `AVERIA_REPORTADA` | Una línea por activo averiado, después del cierre |
+| `ERROR_SISTEMA` | Fallo transaccional, ya hecho el rollback |
+
+Formato: `2026-11-09T19:30:12 | ORDEN_CERRADA | orden=5 horas=4.00`
+
+Por defecto el archivo es `logs/scgo.log`. Otra ruta: `-Dscgo.log.path=/ruta/scgo.log`. La carpeta `logs/` no se versiona.
+
+## Arreglos y ArrayList
+
+Las listas que salen de la base son `ArrayList` (el tamaño depende de las filas). Los arreglos se usan cuando el tamaño ya se conoce:
+
+| Uso | Dónde |
+|-----|--------|
+| `String[]` con las opciones del menú | `MenuConsola` |
+| `int[]` de órdenes por estado, indexado con `EstadoOrden.ordinal()` | `OrdenController.contarPorEstado`, mostrado en la opción 4 |
+| `ArrayList<Integer>` al capturar averías y `int[]` al cerrar la orden | `GestionOrdenView.capturarYRegistrarCierre` y `OrdenController.cerrarOrden` |
+
 ## Pruebas
 
 ```bash
@@ -210,9 +243,13 @@ mvn test
 | Test | Tipo | Descripción |
 |------|------|-------------|
 | `SolapamientoR1LogicaTest` | Unitario | Tabla de verdad R1 (8 casos de borde) — no requiere BD |
-| `MenuConsolaTest` | Unitario | Verifica salida del menú |
+| `MenuConsolaTest` | Unitario | Verifica salida del menú, incluida la opción 6 |
+| `ContarPorEstadoTest` | Unitario | Contadores por `EstadoOrden` sin base de datos |
+| `RegistroArchivoTest` | Unitario | Escritura y lectura del archivo (`@TempDir`) |
 | `AsignacionDAOSolapamientoTest` | Integración | Solapamiento contra MySQL (requiere `database.properties`) |
 | `CicloCompletoIntegrationTest` | Integración | CU006 → CU007 → CU008 (requiere MySQL) |
+| `CierreConAveriaIntegrationTest` | Integración | CPS04: cierre con avería y rechazo R6 |
+| `TransaccionRollbackIntegrationTest` | Integración | CPI05: un fallo en el segundo paso del cierre no deja datos parciales |
 
 Los tests de integración se omiten automáticamente si no hay conexión JDBC configurada.
 

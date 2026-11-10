@@ -43,6 +43,7 @@ com.servihome.scgo
 ├── controlador/  OrdenController
 ├── dao/          Acceso JDBC
 ├── enums/        Estados del dominio
+├── excepcion/    SolapamientoException
 ├── modelo/       POJOs / entidades
 ├── registro/     RegistroOperaciones, RegistroArchivo
 └── vista/        MenuConsola, GestionOrdenView
@@ -54,7 +55,7 @@ com.servihome.scgo
 - MySQL 8.x accesible (local o Cloud; **no se asume localhost**)
 - Maven 3.8+ (opcional, recomendado)
 
-La base de datos debe llamarse `servihome` (o la que configures en `jdbc.database`). Al arrancar, la aplicación crea el esquema y carga datos demo si la BD está vacía.
+La base de datos debe llamarse `servihome` (o la que configures en `jdbc.database`). Al arrancar, la aplicación crea las tablas si no existen y carga datos demo si no hay clientes.
 
 ## Configuración
 
@@ -106,7 +107,20 @@ Si la BD ya tiene datos cargados manualmente (por ejemplo, con scripts SQL propi
 
 ## Scripts SQL
 
-`sql/01_creacion_tablas.sql` crea el esquema. `sql/02_insercion_consulta_borrado.sql` inserta datos de prueba, muestra consultas y, antes del borrado físico, deja un ejemplo de **baja lógica** de cliente (RF001): `UPDATE cliente SET activo = FALSE WHERE id_cliente = 2`. El cliente no se elimina para conservar el historial que lo referencia.
+Al arrancar, la aplicación usa `src/main/resources/db/schema.sql` y, si no hay clientes, `seed.sql`. Los dos scripts de `sql/` se corren a mano.
+
+`sql/01_creacion_tablas.sql` hace `DROP DATABASE IF EXISTS servihome`, vuelve a crear la base y define las tablas. `cliente.activo` (BOOLEAN, default `TRUE`) es la columna de la baja lógica (RF001). El esquema de la aplicación tiene la misma columna.
+
+`sql/02_insercion_consulta_borrado.sql` inserta un juego de prueba, muestra consultas y, al inicio de la sección 3, deja el ejemplo de **baja lógica**:
+
+```sql
+UPDATE cliente SET activo = FALSE WHERE id_cliente = 2;
+SELECT id_cliente, razon_social, activo FROM cliente;
+```
+
+Ese `id_cliente = 2` es Juan Pérez. El `UPDATE` deja la fila, con `activo = 0`. En este script la solicitud y la orden son del cliente 1 (Consorcio Torres del Parque); Juan Pérez queda referenciado por su propiedad. Los `DELETE` que siguen limpian todo el juego de prueba, en orden inverso a las claves foráneas, y ese cliente también se borra. Al terminar, los `COUNT(*)` de verificación dan 0 y el próximo arranque de la aplicación puede volver a cargar el seed.
+
+La sección 1, corrida sola, deja la solicitud 1 en `Programada` y ya con una orden. CU006 del menú exige una solicitud `PENDIENTE`.
 
 ## Compilación y ejecución
 
@@ -118,6 +132,8 @@ mvn exec:java
 ```
 
 ### Manual
+
+`lib/` no se versiona. Para compilar sin Maven, copiá ahí el MySQL Connector/J `8.4.0` (el mismo artefacto que declara el `pom.xml`).
 
 ```bash
 mkdir -p target/classes
@@ -145,7 +161,7 @@ Al ejecutar la aplicación aparece el menú principal:
 
 ### Opción 4 — Consultar estado
 
-Muestra solicitudes pendientes, órdenes asignadas, personal operativo, activos disponibles y un resumen de órdenes por estado (`ASIGNADA`, `FINALIZADA`, `CANCELADA`). Útil para conocer los IDs antes de operar.
+Muestra solicitudes pendientes, órdenes asignadas, la lista polimórfica de recursos operativos, el personal operativo, los activos disponibles y un resumen de órdenes por estado (`ASIGNADA`, `FINALIZADA`, `CANCELADA`). Útil para conocer los IDs antes de operar.
 
 ### Opción 6 — Registro de operaciones
 
@@ -187,7 +203,7 @@ Al finalizar deberías ver: **"Ciclo completo exitoso. Orden X FINALIZADA."**
 - No puede haber solapamiento horario con otra orden `ASIGNADA` del mismo recurso.
 - Turnos contiguos (ej. uno termina 12:00 y otro empieza 12:00) **no** se consideran solapados.
 
-**Resultado:** mensaje de éxito o *"Asignacion rechazada: recurso no operativo o solapamiento detectado"*.
+**Resultado:** `Recurso asignado correctamente a la orden X`. Si el recurso no está operativo: `Asignacion rechazada: Recurso no operativo: id=X`. Si hay solapamiento: `Solapamiento detectado:` y el motivo (recurso, fecha y franja).
 
 #### CU008 — Cerrar orden (opción 3)
 
@@ -224,7 +240,9 @@ Cada caso de uso deja una línea en un archivo **después** de confirmar la oper
 | `AVERIA_REPORTADA` | Una línea por activo averiado, después del cierre |
 | `ERROR_SISTEMA` | Fallo transaccional, ya hecho el rollback |
 
-Formato: `2026-11-09T19:30:12 | ORDEN_CERRADA | orden=5 horas=4.00`
+Formato: `2026-11-09T19:30:12 | ORDEN_CERRADA | orden=5 horas=4.0`
+
+Las horas salen de `BigDecimal.toPlainString()`, así que un `4.0` ingresado queda `horas=4.0`.
 
 Por defecto el archivo es `logs/scgo.log`. Otra ruta: `-Dscgo.log.path=/ruta/scgo.log`. La carpeta `logs/` no se versiona.
 
@@ -247,6 +265,7 @@ mvn test
 | Test | Tipo | Descripción |
 |------|------|-------------|
 | `SolapamientoR1LogicaTest` | Unitario | Tabla de verdad R1 (8 casos de borde) — no requiere BD |
+| `RecursoPolimorfismoTest` | Unitario | `estaDisponible()` sobre el tipo `Recurso` (personal activo y en licencia) — no requiere BD |
 | `MenuConsolaTest` | Unitario | Verifica salida del menú, incluida la opción 6 |
 | `ContarPorEstadoTest` | Unitario | Contadores por `EstadoOrden` sin base de datos |
 | `RegistroArchivoTest` | Unitario | Escritura y lectura del archivo (`@TempDir`) |

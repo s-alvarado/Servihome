@@ -111,8 +111,10 @@ WHERE a.estado <> 'Disponible';
 -- 3) BAJA LOGICA, BORRADO DE DATOS DE PRUEBA Y VERIFICACION
 -- =====================================================================
 
--- Baja logica de un cliente (RF001): no se borra para conservar
--- el historial de solicitudes y ordenes que lo referencian.
+-- Baja logica (RF001): Juan Perez (id 2) queda inactivo y la fila sigue.
+-- En este juego la solicitud y la orden son del cliente 1; el cliente 2
+-- queda referenciado por su propiedad. Los DELETE de abajo limpian
+-- todo el juego de prueba, incluido este cliente.
 UPDATE cliente SET activo = FALSE WHERE id_cliente = 2;
 SELECT id_cliente, razon_social, activo FROM cliente;
 

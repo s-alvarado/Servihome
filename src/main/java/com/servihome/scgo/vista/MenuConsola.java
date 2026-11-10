@@ -71,6 +71,7 @@ public class MenuConsola {
             case 3 -> cerrarOrden();
             case 4 -> view.mostrarEstadoSistema();
             case 5 -> view.ejecutarCicloCompleto();
+            case 6 -> view.mostrarRegistro();
             case 0 -> detener();
             default -> view.mostrarResultado("Opcion invalida. Intente nuevamente.");
         }

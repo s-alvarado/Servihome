@@ -21,6 +21,9 @@ import com.servihome.scgo.modelo.OrdenTrabajo;
 import com.servihome.scgo.modelo.Personal;
 import com.servihome.scgo.modelo.Recurso;
 import com.servihome.scgo.modelo.Solicitud;
+import com.servihome.scgo.registro.RegistroArchivo;
+import com.servihome.scgo.registro.RegistroOperaciones;
+import com.servihome.scgo.registro.TipoEvento;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -44,19 +47,33 @@ public class OrdenController {
     private final CierreOrdenDAO cierreDAO;
     private final PersonalDAO personalDAO;
     private final ActivoDAO activoDAO;
+    private final RegistroOperaciones registro;
 
+    /** Conserva la firma anterior: el registro por defecto es el archivo logs/scgo.log. */
     public OrdenController(OrdenTrabajoDAO ordenDAO,
                            SolicitudDAO solicitudDAO,
                            AsignacionDAO asignacionDAO,
                            CierreOrdenDAO cierreDAO,
                            PersonalDAO personalDAO,
                            ActivoDAO activoDAO) {
+        this(ordenDAO, solicitudDAO, asignacionDAO, cierreDAO, personalDAO, activoDAO,
+                new RegistroArchivo());
+    }
+
+    public OrdenController(OrdenTrabajoDAO ordenDAO,
+                           SolicitudDAO solicitudDAO,
+                           AsignacionDAO asignacionDAO,
+                           CierreOrdenDAO cierreDAO,
+                           PersonalDAO personalDAO,
+                           ActivoDAO activoDAO,
+                           RegistroOperaciones registro) {
         this.ordenDAO = ordenDAO;
         this.solicitudDAO = solicitudDAO;
         this.asignacionDAO = asignacionDAO;
         this.cierreDAO = cierreDAO;
         this.personalDAO = personalDAO;
         this.activoDAO = activoDAO;
+        this.registro = registro;
     }
 
     /** CU006: generar orden a partir de solicitud existente (requiere franja horaria). */
@@ -97,6 +114,10 @@ public class OrdenController {
                     ordenDAO.insertar(orden, conn);
                     solicitudDAO.actualizarEstado(idSolicitud, EstadoSolicitud.PROGRAMADA, conn);
                 });
+        registro.registrar(TipoEvento.ORDEN_GENERADA,
+                "orden=" + orden.getIdOrden()
+                        + " solicitud=" + idSolicitud
+                        + " franja=" + fechaServicio + " " + horaInicio + "-" + horaFin);
         return orden;
     }
 
@@ -121,16 +142,21 @@ public class OrdenController {
             throw new IllegalArgumentException("Recurso no encontrado: id=" + idRecurso);
         }
         if (!recursoEstaDisponibleEnLista(recursos, idRecurso)) {
-            throw new IllegalArgumentException("Recurso no operativo: id=" + idRecurso);
+            String motivo = "Recurso no operativo: id=" + idRecurso;
+            registro.registrar(TipoEvento.ASIGNACION_RECHAZADA,
+                    "orden=" + idOrden + " motivo=" + motivo);
+            throw new IllegalArgumentException(motivo);
         }
 
         Franja franja = orden.getFranjaHoraria();
         if (asignacionDAO.existeSolapamientoEnOtraOrden(
                 idOrden, idRecurso, tipo, franja.getFecha(), franja.getInicio(), franja.getFin())) {
-            throw new SolapamientoException(
-                    "Solapamiento detectado para recurso id=" + idRecurso
-                            + " en " + franja.getFecha() + " "
-                            + franja.getInicio() + "-" + franja.getFin());
+            String motivo = "Solapamiento detectado para recurso id=" + idRecurso
+                    + " en " + franja.getFecha() + " "
+                    + franja.getInicio() + "-" + franja.getFin();
+            registro.registrar(TipoEvento.ASIGNACION_RECHAZADA,
+                    "orden=" + idOrden + " motivo=" + motivo);
+            throw new SolapamientoException(motivo);
         }
 
         if (tipo == TipoRecurso.PERSONAL) {
@@ -138,6 +164,8 @@ public class OrdenController {
         } else {
             asignacionDAO.registrarActivo(idOrden, idRecurso);
         }
+        registro.registrar(TipoEvento.RECURSO_ASIGNADO,
+                "orden=" + idOrden + " recurso=" + idRecurso + " tipo=" + tipo);
     }
 
     /** Delega en AsignacionDAO la regla R1 (desigualdad estricta). */
@@ -187,11 +215,26 @@ public class OrdenController {
                                 idsActivosAveriados[i], EstadoActivo.EN_REPARACION, conn);
                     }
                 });
+        registro.registrar(TipoEvento.ORDEN_CERRADA,
+                "orden=" + idOrden + " horas=" + cierre.getHorasReales().toPlainString());
+        if (cierre.isAveria()) {
+            for (int i = 0; i < idsActivosAveriados.length; i++) {
+                registro.registrar(TipoEvento.AVERIA_REPORTADA,
+                        "orden=" + idOrden
+                                + " activo=" + idsActivosAveriados[i]
+                                + " detalle=" + cierre.getDetalleAveria());
+            }
+        }
     }
 
     /** Activos asignados a la orden, para que la vista arme la seleccion de averia. */
     public List<Activo> listarActivosDeOrden(int idOrden) {
         return activoDAO.listarPorOrden(idOrden);
+    }
+
+    /** Ultimas lineas del registro de operaciones, para la opcion 6 del menu. */
+    public List<String> leerRegistro(int cantidad) {
+        return registro.leerUltimos(cantidad);
     }
 
     public List<Solicitud> listarSolicitudesPendientes() {
@@ -350,9 +393,11 @@ public class OrdenController {
                 try {
                     conn.rollback();
                 } catch (SQLException rollbackEx) {
+                    registrarErrorSistema(rollbackEx);
                     throw new DaoException(mensajeRollback, rollbackEx);
                 }
             }
+            registrarErrorSistema(e);
             if (e instanceof DaoException daoEx) {
                 throw daoEx;
             }
@@ -360,6 +405,13 @@ public class OrdenController {
         } finally {
             cerrarConexion(conn);
         }
+    }
+
+    /** El mensaje no incluye credenciales ni la traza: solo el texto del fallo. */
+    private void registrarErrorSistema(Exception e) {
+        String mensaje = e.getMessage();
+        registro.registrar(TipoEvento.ERROR_SISTEMA,
+                mensaje == null ? e.getClass().getSimpleName() : mensaje);
     }
 
     private void cerrarConexion(Connection conn) {

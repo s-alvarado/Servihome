@@ -12,6 +12,8 @@ import com.servihome.scgo.dao.SolicitudDAO;
 import com.servihome.scgo.modelo.CierreOrden;
 import com.servihome.scgo.modelo.OrdenTrabajo;
 import com.servihome.scgo.modelo.Solicitud;
+import com.servihome.scgo.registro.RegistroArchivo;
+import com.servihome.scgo.registro.RegistroOperaciones;
 import com.servihome.scgo.vista.GestionOrdenView;
 import com.servihome.scgo.vista.MenuConsola;
 
@@ -35,6 +37,7 @@ public final class ScgoApplication {
         DAO<CierreOrden> cierreDAO = new CierreOrdenDAO();
         PersonalDAO personalDAO = new PersonalDAO();
         ActivoDAO activoDAO = new ActivoDAO();
+        RegistroOperaciones registro = new RegistroArchivo();
 
         OrdenController controller = new OrdenController(
                 (OrdenTrabajoDAO) ordenDAO,
@@ -42,7 +45,8 @@ public final class ScgoApplication {
                 asignacionDAO,
                 (CierreOrdenDAO) cierreDAO,
                 personalDAO,
-                activoDAO);
+                activoDAO,
+                registro);
 
         Scanner scanner = new Scanner(System.in);
         GestionOrdenView view = new GestionOrdenView(controller, scanner);

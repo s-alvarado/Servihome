@@ -192,6 +192,18 @@ public class GestionOrdenView {
         }
     }
 
+    /** Opcion 6: ultimas 10 lineas del archivo de operaciones. */
+    public void mostrarRegistro() {
+        List<String> lineas = controller.leerRegistro(10);
+        if (lineas.isEmpty()) {
+            mostrarResultado("(sin registros)");
+            return;
+        }
+        for (String linea : lineas) {
+            mostrarResultado(linea);
+        }
+    }
+
     public void mostrarResultado(String mensaje) {
         System.out.println("[SCGO] " + mensaje);
     }

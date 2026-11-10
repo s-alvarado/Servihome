@@ -28,7 +28,7 @@ public final class DatabaseBootstrap {
             }
             if (contarRegistros(conn, "cliente") == 0) {
                 ejecutarScript(conn, "/db/seed.sql");
-                System.out.println("[SCGO] Datos iniciales cargados (solicitud PENDIENTE id=1).");
+                System.out.println("[SCGO] Datos iniciales cargados. La opcion 4 muestra los IDs.");
             }
         } catch (SQLException e) {
             throw new IllegalStateException("No se pudo inicializar la base de datos", e);

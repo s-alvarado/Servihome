@@ -42,6 +42,12 @@ public class OrdenTrabajoDAO implements DAO<OrdenTrabajo> {
             ORDER BY id_orden
             """;
 
+    private static final String SELECT_TODAS = """
+            SELECT id_orden, id_solicitud, fecha_servicio, hora_inicio, hora_fin, estado
+            FROM orden_trabajo
+            ORDER BY id_orden
+            """;
+
     @Override
     public int insertar(OrdenTrabajo obj) {
         try (Connection conn = DatabaseConfig.getConnection()) {
@@ -113,14 +119,35 @@ public class OrdenTrabajoDAO implements DAO<OrdenTrabajo> {
         }
     }
 
-    /** Variante para CU008: participa en la transaccion del controlador (R4). */
+    /**
+     * Variante para CU008: participa en la transaccion del controlador (R4).
+     * Exige una fila afectada: un id inexistente debe abortar la transaccion
+     * y no confirmar el resto de los cambios.
+     */
     public void actualizarEstado(int idOrden, EstadoOrden estado, Connection conn) {
         try (PreparedStatement ps = conn.prepareStatement(UPDATE_ESTADO)) {
             ps.setString(1, EnumMapper.toDb(estado));
             ps.setInt(2, idOrden);
-            ps.executeUpdate();
+            if (ps.executeUpdate() != 1) {
+                throw new DaoException("Orden no encontrada: id=" + idOrden);
+            }
         } catch (SQLException e) {
             throw new DaoException("Error al actualizar estado orden id=" + idOrden, e);
+        }
+    }
+
+    /** Todas las ordenes. ArrayList porque la cantidad de filas no se conoce antes. */
+    public List<OrdenTrabajo> listarTodas() {
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SELECT_TODAS);
+             ResultSet rs = ps.executeQuery()) {
+            List<OrdenTrabajo> lista = new ArrayList<>();
+            while (rs.next()) {
+                lista.add(mapRow(rs));
+            }
+            return lista;
+        } catch (SQLException e) {
+            throw new DaoException("Error al listar todas las ordenes", e);
         }
     }
 

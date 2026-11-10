@@ -105,12 +105,17 @@ public class SolicitudDAO implements DAO<Solicitud> {
         }
     }
 
-    /** Variante para CU006: participa en la transaccion del controlador. */
+    /**
+     * Variante para CU006: participa en la transaccion del controlador.
+     * Exige una fila afectada para que un id inexistente provoque rollback.
+     */
     public void actualizarEstado(int idSolicitud, EstadoSolicitud estado, Connection conn) {
         try (PreparedStatement ps = conn.prepareStatement(UPDATE_ESTADO)) {
             ps.setString(1, EnumMapper.toDb(estado));
             ps.setInt(2, idSolicitud);
-            ps.executeUpdate();
+            if (ps.executeUpdate() != 1) {
+                throw new DaoException("Solicitud no encontrada: id=" + idSolicitud);
+            }
         } catch (SQLException e) {
             throw new DaoException("Error al actualizar estado solicitud id=" + idSolicitud, e);
         }

@@ -8,6 +8,7 @@ import com.servihome.scgo.dao.DaoException;
 import com.servihome.scgo.dao.OrdenTrabajoDAO;
 import com.servihome.scgo.dao.PersonalDAO;
 import com.servihome.scgo.dao.SolicitudDAO;
+import com.servihome.scgo.enums.EstadoActivo;
 import com.servihome.scgo.enums.EstadoDevolucion;
 import com.servihome.scgo.enums.EstadoOrden;
 import com.servihome.scgo.enums.EstadoSolicitud;
@@ -20,6 +21,9 @@ import com.servihome.scgo.modelo.OrdenTrabajo;
 import com.servihome.scgo.modelo.Personal;
 import com.servihome.scgo.modelo.Recurso;
 import com.servihome.scgo.modelo.Solicitud;
+import com.servihome.scgo.registro.RegistroArchivo;
+import com.servihome.scgo.registro.RegistroOperaciones;
+import com.servihome.scgo.registro.TipoEvento;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -43,19 +47,33 @@ public class OrdenController {
     private final CierreOrdenDAO cierreDAO;
     private final PersonalDAO personalDAO;
     private final ActivoDAO activoDAO;
+    private final RegistroOperaciones registro;
 
+    /** Conserva la firma anterior: el registro por defecto es el archivo logs/scgo.log. */
     public OrdenController(OrdenTrabajoDAO ordenDAO,
                            SolicitudDAO solicitudDAO,
                            AsignacionDAO asignacionDAO,
                            CierreOrdenDAO cierreDAO,
                            PersonalDAO personalDAO,
                            ActivoDAO activoDAO) {
+        this(ordenDAO, solicitudDAO, asignacionDAO, cierreDAO, personalDAO, activoDAO,
+                new RegistroArchivo());
+    }
+
+    public OrdenController(OrdenTrabajoDAO ordenDAO,
+                           SolicitudDAO solicitudDAO,
+                           AsignacionDAO asignacionDAO,
+                           CierreOrdenDAO cierreDAO,
+                           PersonalDAO personalDAO,
+                           ActivoDAO activoDAO,
+                           RegistroOperaciones registro) {
         this.ordenDAO = ordenDAO;
         this.solicitudDAO = solicitudDAO;
         this.asignacionDAO = asignacionDAO;
         this.cierreDAO = cierreDAO;
         this.personalDAO = personalDAO;
         this.activoDAO = activoDAO;
+        this.registro = registro;
     }
 
     /** CU006: generar orden a partir de solicitud existente (requiere franja horaria). */
@@ -86,31 +104,21 @@ public class OrdenController {
         orden.setHoraFin(horaFin);
         orden.setEstado(EstadoOrden.ASIGNADA);
 
-        Connection conn = null;
-        try {
-            conn = DatabaseConfig.getConnection();
-            // Transaccion: crear la orden y pasar la solicitud a PROGRAMADA deben
-            // ocurrir como una unidad. setAutoCommit(false) abre la transaccion para
-            // que ambos cambios se confirmen juntos (commit) o ninguno (rollback) y
-            // no quede una solicitud programada sin orden, ni viceversa.
-            conn.setAutoCommit(false);
-            ordenDAO.insertar(orden, conn);
-            solicitudDAO.actualizarEstado(idSolicitud, EstadoSolicitud.PROGRAMADA, conn);
-            conn.commit();
-            return orden;
-        } catch (SQLException e) {
-            if (conn != null) {
-                try {
-                    // Ante cualquier fallo se revierte todo: la BD vuelve al estado previo.
-                    conn.rollback();
-                } catch (SQLException rollbackEx) {
-                    throw new DaoException("Error en rollback al generar orden", rollbackEx);
-                }
-            }
-            throw new DaoException("Error transaccional al generar orden", e);
-        } finally {
-            cerrarConexion(conn);
-        }
+        // Transaccion: crear la orden y pasar la solicitud a PROGRAMADA deben
+        // ocurrir como una unidad. Si el segundo paso falla, el primero no puede
+        // quedar confirmado.
+        ejecutarEnTransaccion(
+                "Error en rollback al generar orden",
+                "Error transaccional al generar orden",
+                conn -> {
+                    ordenDAO.insertar(orden, conn);
+                    solicitudDAO.actualizarEstado(idSolicitud, EstadoSolicitud.PROGRAMADA, conn);
+                });
+        registro.registrar(TipoEvento.ORDEN_GENERADA,
+                "orden=" + orden.getIdOrden()
+                        + " solicitud=" + idSolicitud
+                        + " franja=" + fechaServicio + " " + horaInicio + "-" + horaFin);
+        return orden;
     }
 
     /**
@@ -134,16 +142,21 @@ public class OrdenController {
             throw new IllegalArgumentException("Recurso no encontrado: id=" + idRecurso);
         }
         if (!recursoEstaDisponibleEnLista(recursos, idRecurso)) {
-            throw new IllegalArgumentException("Recurso no operativo: id=" + idRecurso);
+            String motivo = "Recurso no operativo: id=" + idRecurso;
+            registro.registrar(TipoEvento.ASIGNACION_RECHAZADA,
+                    "orden=" + idOrden + " motivo=" + motivo);
+            throw new IllegalArgumentException(motivo);
         }
 
         Franja franja = orden.getFranjaHoraria();
         if (asignacionDAO.existeSolapamientoEnOtraOrden(
                 idOrden, idRecurso, tipo, franja.getFecha(), franja.getInicio(), franja.getFin())) {
-            throw new SolapamientoException(
-                    "Solapamiento detectado para recurso id=" + idRecurso
-                            + " en " + franja.getFecha() + " "
-                            + franja.getInicio() + "-" + franja.getFin());
+            String motivo = "Solapamiento detectado para recurso id=" + idRecurso
+                    + " en " + franja.getFecha() + " "
+                    + franja.getInicio() + "-" + franja.getFin();
+            registro.registrar(TipoEvento.ASIGNACION_RECHAZADA,
+                    "orden=" + idOrden + " motivo=" + motivo);
+            throw new SolapamientoException(motivo);
         }
 
         if (tipo == TipoRecurso.PERSONAL) {
@@ -151,6 +164,8 @@ public class OrdenController {
         } else {
             asignacionDAO.registrarActivo(idOrden, idRecurso);
         }
+        registro.registrar(TipoEvento.RECURSO_ASIGNADO,
+                "orden=" + idOrden + " recurso=" + idRecurso + " tipo=" + tipo);
     }
 
     /** Delega en AsignacionDAO la regla R1 (desigualdad estricta). */
@@ -160,10 +175,19 @@ public class OrdenController {
     }
 
     /**
-     * CU008: cierre transaccional (R4). Registrar el cierre y pasar la orden a
-     * FINALIZADA forman una unica operacion atomica (ver bloque transaccional abajo).
+     * CU008 sin averia de activos. Delega en la sobrecarga con un arreglo vacio
+     * para no romper a quien ya cerraba la orden solo con el cierre.
      */
     public void cerrarOrden(int idOrden, CierreOrden cierre) {
+        cerrarOrden(idOrden, cierre, new int[0]);
+    }
+
+    /**
+     * CU008: cierre transaccional (R4) y, si hay averia (R6), los activos
+     * indicados pasan a EN_REPARACION en la misma transaccion. El arreglo tiene
+     * tamano fijo porque la vista ya termino de capturar los ids.
+     */
+    public void cerrarOrden(int idOrden, CierreOrden cierre, int[] idsActivosAveriados) {
         OrdenTrabajo orden = ordenDAO.buscarPorId(idOrden);
         if (orden == null) {
             throw new IllegalArgumentException("Orden no encontrada: id=" + idOrden);
@@ -172,34 +196,45 @@ public class OrdenController {
             throw new IllegalArgumentException("Solo se puede cerrar una orden ASIGNADA");
         }
         validarCierre(cierre);
+        validarR6(idOrden, cierre, idsActivosAveriados);
 
         cierre.setIdOrden(idOrden);
 
-        Connection conn = null;
-        try {
-            conn = DatabaseConfig.getConnection();
-            // Atomicidad del cierre (R4): insertar el cierre y marcar la orden como
-            // FINALIZADA deben ser indivisibles. setAutoCommit(false) agrupa ambos en
-            // una transaccion; sin esto podria persistirse el cierre pero quedar la
-            // orden ASIGNADA (o al reves), un estado inconsistente. Esto justifica usar
-            // motor InnoDB en MySQL: es el que soporta transacciones (MyISAM no).
-            conn.setAutoCommit(false);
-            cierreDAO.insertar(cierre, conn);
-            ordenDAO.actualizarEstado(idOrden, EstadoOrden.FINALIZADA, conn);
-            conn.commit();
-        } catch (SQLException e) {
-            if (conn != null) {
-                try {
-                    // Si algo falla, se deshacen ambos cambios juntos.
-                    conn.rollback();
-                } catch (SQLException rollbackEx) {
-                    throw new DaoException("Error en rollback del cierre orden id=" + idOrden, rollbackEx);
-                }
+        // Atomicidad del cierre (R4 + RF009): el cierre, la orden FINALIZADA y los
+        // activos en reparacion se confirman juntos. Si uno falla, no queda una
+        // orden cerrada con el activo todavia disponible.
+        ejecutarEnTransaccion(
+                "Error en rollback del cierre orden id=" + idOrden,
+                "Error transaccional al cerrar orden id=" + idOrden,
+                conn -> {
+                    cierreDAO.insertar(cierre, conn);
+                    ordenDAO.actualizarEstado(idOrden, EstadoOrden.FINALIZADA, conn);
+                    // I4: arreglo de ids de activos averiados, tamano ya conocido
+                    for (int i = 0; i < idsActivosAveriados.length; i++) {
+                        activoDAO.actualizarEstado(
+                                idsActivosAveriados[i], EstadoActivo.EN_REPARACION, conn);
+                    }
+                });
+        registro.registrar(TipoEvento.ORDEN_CERRADA,
+                "orden=" + idOrden + " horas=" + cierre.getHorasReales().toPlainString());
+        if (cierre.isAveria()) {
+            for (int i = 0; i < idsActivosAveriados.length; i++) {
+                registro.registrar(TipoEvento.AVERIA_REPORTADA,
+                        "orden=" + idOrden
+                                + " activo=" + idsActivosAveriados[i]
+                                + " detalle=" + cierre.getDetalleAveria());
             }
-            throw new DaoException("Error transaccional al cerrar orden id=" + idOrden, e);
-        } finally {
-            cerrarConexion(conn);
         }
+    }
+
+    /** Activos asignados a la orden, para que la vista arme la seleccion de averia. */
+    public List<Activo> listarActivosDeOrden(int idOrden) {
+        return activoDAO.listarPorOrden(idOrden);
+    }
+
+    /** Ultimas lineas del registro de operaciones, para la opcion 6 del menu. */
+    public List<String> leerRegistro(int cantidad) {
+        return registro.leerUltimos(cantidad);
     }
 
     public List<Solicitud> listarSolicitudesPendientes() {
@@ -208,6 +243,25 @@ public class OrdenController {
 
     public List<OrdenTrabajo> listarOrdenesAsignadas() {
         return ordenDAO.listarPorEstado(EstadoOrden.ASIGNADA);
+    }
+
+    /**
+     * Resumen por estado para la opcion 4. El arreglo tiene un casillero por
+     * cada valor de EstadoOrden; la lista viene de la base y es de tamano variable.
+     */
+    public int[] contarOrdenesPorEstado() {
+        return contarPorEstado(ordenDAO.listarTodas());
+    }
+
+    /** Conteo puro, sin base de datos, para poder probarlo con una lista armada a mano. */
+    public static int[] contarPorEstado(List<OrdenTrabajo> ordenes) {
+        EstadoOrden[] estados = EstadoOrden.values();
+        // I4: arreglo de contadores indexado por EstadoOrden.ordinal()
+        int[] contadores = new int[estados.length];
+        for (OrdenTrabajo orden : ordenes) {
+            contadores[orden.getEstado().ordinal()]++;
+        }
+        return contadores;
     }
 
     /** Lista heterogenea ordenada por descripcion (polimorfismo + I3). */
@@ -281,14 +335,100 @@ public class OrdenController {
         }
     }
 
+    /**
+     * R6 se valida antes de abrir la transaccion: un id ajeno a la orden no debe
+     * llegar a persistir el cierre.
+     */
+    private void validarR6(int idOrden, CierreOrden cierre, int[] idsActivosAveriados) {
+        if (idsActivosAveriados == null) {
+            throw new IllegalArgumentException("R6: la lista de activos averiados no puede ser nula");
+        }
+        if (cierre.isAveria()) {
+            if (idsActivosAveriados.length == 0) {
+                throw new IllegalArgumentException(
+                        "R6: si hay averia debe indicarse al menos un activo");
+            }
+            List<Activo> asignados = activoDAO.listarPorOrden(idOrden);
+            if (asignados.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "R6: la orden " + idOrden + " no tiene activos asignados para reportar averia");
+            }
+            for (int i = 0; i < idsActivosAveriados.length; i++) {
+                int idActivo = idsActivosAveriados[i];
+                if (!activoAsignado(asignados, idActivo)) {
+                    throw new IllegalArgumentException(
+                            "R6: el activo id=" + idActivo + " no esta asignado a la orden " + idOrden);
+                }
+            }
+        } else if (idsActivosAveriados.length > 0) {
+            throw new IllegalArgumentException(
+                    "R6: sin averia el arreglo de activos debe estar vacio");
+        }
+    }
+
+    private boolean activoAsignado(List<Activo> asignados, int idActivo) {
+        for (Activo activo : asignados) {
+            if (activo.getId() == idActivo) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Agrupa commit y rollback. Los DAO convierten SQLException en DaoException
+     * (no chequeada): si solo se capturara SQLException, el fallo saltaria el
+     * rollback y el finally confirmaria el cambio parcial al reactivar autoCommit.
+     */
+    private void ejecutarEnTransaccion(String mensajeRollback, String mensajeError,
+                                       OperacionTransaccional operacion) {
+        Connection conn = null;
+        try {
+            conn = DatabaseConfig.getConnection();
+            conn.setAutoCommit(false);
+            operacion.ejecutar(conn);
+            conn.commit();
+        } catch (SQLException | DaoException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackEx) {
+                    registrarErrorSistema(rollbackEx);
+                    throw new DaoException(mensajeRollback, rollbackEx);
+                }
+            }
+            registrarErrorSistema(e);
+            if (e instanceof DaoException daoEx) {
+                throw daoEx;
+            }
+            throw new DaoException(mensajeError, e);
+        } finally {
+            cerrarConexion(conn);
+        }
+    }
+
+    /** El mensaje no incluye credenciales ni la traza: solo el texto del fallo. */
+    private void registrarErrorSistema(Exception e) {
+        String mensaje = e.getMessage();
+        registro.registrar(TipoEvento.ERROR_SISTEMA,
+                mensaje == null ? e.getClass().getSimpleName() : mensaje);
+    }
+
     private void cerrarConexion(Connection conn) {
         if (conn != null) {
             try {
+                // Riesgo JDBC: setAutoCommit(true) con una transaccion todavia abierta
+                // la CONFIRMA. Solo se llama despues de commit o rollback.
                 conn.setAutoCommit(true);
                 conn.close();
             } catch (SQLException e) {
                 throw new DaoException("Error al cerrar conexion JDBC", e);
             }
         }
+    }
+
+    @FunctionalInterface
+    private interface OperacionTransaccional {
+        void ejecutar(Connection conn);
     }
 }

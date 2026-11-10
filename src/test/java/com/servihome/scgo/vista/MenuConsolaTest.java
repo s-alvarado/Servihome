@@ -41,6 +41,7 @@ class MenuConsolaTest {
 
         String salida = captura.toString();
         assertTrue(salida.contains("SCGO - Menu principal"));
+        assertTrue(salida.contains("6. Ver registro de operaciones (ultimas 10)"));
         assertTrue(salida.contains("Sesion finalizada"));
     }
 }

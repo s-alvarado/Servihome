@@ -22,6 +22,12 @@ public class CierreOrdenDAO implements DAO<CierreOrden> {
             WHERE id_cierre = ?
             """;
 
+    private static final String SELECT_BY_ORDEN = """
+            SELECT id_cierre, id_orden, horas_reales, materiales, estado_devolucion, averia, detalle_averia
+            FROM cierre_orden
+            WHERE id_orden = ?
+            """;
+
     private static final String UPDATE = """
             UPDATE cierre_orden
             SET id_orden = ?, horas_reales = ?, materiales = ?, estado_devolucion = ?,
@@ -58,6 +64,22 @@ public class CierreOrdenDAO implements DAO<CierreOrden> {
             throw new DaoException("No se obtuvo id generado para cierre", null);
         } catch (SQLException e) {
             throw new DaoException("Error al insertar cierre orden id=" + obj.getIdOrden(), e);
+        }
+    }
+
+    /** Cierre asociado a la orden, o null si el cierre no quedo persistido. */
+    public CierreOrden buscarPorOrden(int idOrden) {
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SELECT_BY_ORDEN)) {
+            ps.setInt(1, idOrden);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+                return null;
+            }
+        } catch (SQLException e) {
+            throw new DaoException("Error al buscar cierre de la orden id=" + idOrden, e);
         }
     }
 

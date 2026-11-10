@@ -42,7 +42,7 @@ public class MenuConsola {
 
     public void ejecutar() {
         view.mostrarResultado("Bienvenido a SCGO - ServiHome (MVP)");
-        view.mostrarResultado("Datos demo: solicitud PENDIENTE id=1, personal 1-2, activos 1-2.");
+        view.mostrarResultado("Datos demo cargados. La opcion 4 lista solicitudes, ordenes y recursos.");
         while (activo) {
             mostrarMenu();
             int opcion = leerEntero("Seleccione una opcion: ");

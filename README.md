@@ -114,17 +114,20 @@ Al iniciar, `DatabaseBootstrap`:
 2. Crea las tablas si no existen (`src/main/resources/db/schema.sql`).
 3. Inserta datos demo si no hay clientes (`src/main/resources/db/seed.sql`).
 
-**Datos demo incluidos:**
+**Datos demo incluidos** (el mismo juego que la sección 1 de `sql/02_insercion_consulta_borrado.sql`):
 
-| Entidad | IDs relevantes | Notas |
-|---------|----------------|-------|
-| Solicitud | `1` | Estado `PENDIENTE` — lista para CU006 |
-| Personal | `1` Carlos Gomez, `2` Marta Diaz | Operativos (`ACTIVO`) |
-| Personal | `3` Luis Fernandez | En licencia (rechazado en CU007) |
-| Activos | `1` Camioneta Hilux AB123CD, `2` Cortadora de cesped industrial | Disponibles |
-| Activo | `3` Bomba sumergible para piscina | En reparación (rechazado en CU007) |
+| Qué hay | Para qué |
+|---------|----------|
+| 10 solicitudes `PENDIENTE` | CU006. La etiqueta `[E01]` es el caso libre; `[E02]`, `[E03]`, `[E04]` y `[E11]` traen en el texto la fecha y el horario a probar |
+| Órdenes `ASIGNADA` A, B y C | Ocupan personal y activos. A y B sirven para el solapamiento; C para cerrar con avería |
+| Órdenes `FINALIZADA` E y F, y `CANCELADA` D | Historial, cierre ya hecho y un recurso que no debe bloquear porque la orden está cancelada |
+| Personal en `Licencia` y `Enfermedad` | Hernán Villalba y Andrea Costa: CU007 los rechaza |
+| Activos en `Baja` y `En Reparacion` | Furgón Sprinter y generador portátil: CU007 los rechaza |
+| Cliente inactivo | Inmobiliaria Del Valle, con historial (baja lógica) |
 
-Si la BD ya tiene datos cargados manualmente (por ejemplo, con scripts SQL propios), el seed **no** se vuelve a insertar. Usá la opción **4** del menú para consultar el estado actual.
+Los IDs los imprime la opción **4**. La guía de cada etiqueta `[Exx]` está en los comentarios de `sql/02_insercion_consulta_borrado.sql`.
+
+Si la BD ya tiene datos cargados, el seed **no** se vuelve a insertar. Para pasar de un juego viejo a este, vaciá las tablas (la sección 3 del script 02) o volvé a crear la base con `sql/01_creacion_tablas.sql` y arrancá la aplicación. Usá la opción **4** del menú para consultar el estado actual.
 
 ## Scripts SQL
 
@@ -132,31 +135,34 @@ Al arrancar, la aplicación usa `src/main/resources/db/schema.sql` y, si no hay 
 
 `sql/01_creacion_tablas.sql` hace `DROP DATABASE IF EXISTS servihome`, vuelve a crear la base y define las tablas. `cliente.activo` (BOOLEAN, default `TRUE`) es la columna de la baja lógica (RF001). El esquema de la aplicación tiene la misma columna.
 
-`sql/02_insercion_consulta_borrado.sql` inserta un juego de prueba, muestra consultas y, al inicio de la sección 3, deja el ejemplo de **baja lógica**:
+`sql/02_insercion_consulta_borrado.sql` inserta el juego ampliado, muestra consultas (agenda, solapamiento de Ramiro Sosa el 2026-11-16 de 10:00 a 14:00, activos no disponibles e IDs para la consola) y, en la sección 1, deja el ejemplo de **baja lógica**:
 
 ```sql
-UPDATE cliente SET activo = FALSE WHERE id_cliente = 2;
-SELECT id_cliente, razon_social, activo FROM cliente;
+UPDATE cliente SET activo = FALSE WHERE id_cliente = @cli_inmob;
 ```
 
-Ese `id_cliente = 2` es Juan Pérez. El `UPDATE` deja la fila, con `activo = 0`. En este script la solicitud y la orden son del cliente 1 (Consorcio Torres del Parque); Juan Pérez queda referenciado por su propiedad. Los `DELETE` que siguen limpian todo el juego de prueba, en orden inverso a las claves foráneas, y ese cliente también se borra. Al terminar, los `COUNT(*)` de verificación dan 0 y el próximo arranque de la aplicación puede volver a cargar el seed.
+`@cli_inmob` es Inmobiliaria Del Valle. El `UPDATE` deja la fila, con `activo = 0`, y conserva la propiedad y la orden ya finalizada. La sección 3 muestra ese estado y después borra todo el juego, en orden inverso a las claves foráneas. Al terminar, los `COUNT(*)` de verificación dan 0 y el próximo arranque de la aplicación puede volver a cargar el seed, que trae el mismo juego.
 
-La sección 1, corrida sola, deja la solicitud 1 en `Programada` y ya con una orden. CU006 del menú exige una solicitud `PENDIENTE`.
+La sección 1, corrida sola, deja solicitudes `PENDIENTE` (las de etiqueta `[E01]` en adelante) y órdenes ya asignadas. CU006 del menú solo acepta una solicitud `PENDIENTE`. Si se ejecuta el script completo, la sección 3 vacía la base.
 
 ## Compilación y ejecución
 
 ### Con Maven
 
-`mvn -version` tiene que mostrar Java 17. Si no, apuntá `JAVA_HOME` al JDK 17 y recompilá desde cero (`clean` descarta clases generadas con otro runtime).
+`mvn -version` tiene que mostrar Java 17 o posterior. Una terminal nueva puede volver a Java 11 si `/etc/environment` define `JAVA_HOME`: el `export` de la sesión anterior no se conserva. Si el directorio de JDK 17 no existe, usá otro JDK 17 o más nuevo (en Ubuntu suele estar el 21). El bytecode sigue siendo el de Java 17.
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+# si ese directorio no existe:
+# export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 export PATH="$JAVA_HOME/bin:$PATH"
 mvn -version
 
 mvn clean compile
 mvn exec:java
 ```
+
+Si `compile` falla, no sigas con `exec:java`: `clean` ya borró `target/` y aparece `ClassNotFoundException: com.servihome.scgo.Main`.
 
 ### Manual
 
@@ -196,13 +202,15 @@ Muestra las últimas 10 líneas del archivo de operaciones, o `(sin registros)` 
 
 ### Opción 5 — Ciclo completo guiado (recomendado)
 
-La opción **5** recorre CU006, CU007 y CU008 sin volver al menú. Con los datos demo, la consola lista lo pendiente y pide el id antes del paso 1:
+La opción **5** recorre CU006, CU007 y CU008 sin volver al menú. Con los datos demo, la consola lista lo pendiente y pide el id antes del paso 1. Para un ciclo que no choca con la agenda ya cargada, usá la solicitud `[E01]` y una fecha libre, por ejemplo `2026-11-20`:
 
 ```
-[SCGO]   id=1 | Mantenimiento mensual de piscinas y parque | ingreso=2026-06-05 | estado=PENDIENTE
+[SCGO]   id=7 | [E01] Mantenimiento de piscina de fibra antes del verano | ingreso=2026-11-09 | estado=PENDIENTE
 [SCGO] Seleccione ID de solicitud:
-1
+7
 ```
+
+Ese `7` vale en una base recién cargada con este seed. Si la opción 4 muestra otro id para `[E01]`, usá ese.
 
 **Paso 1.** Pide la franja, no vuelve a pedir la solicitud. Al confirmar muestra la orden y la deja como orden activa del ciclo.
 
@@ -210,32 +218,32 @@ La opción **5** recorre CU006, CU007 y CU008 sin volver al menú. Con los datos
 [SCGO] --- Paso 1/3: CU006 Generar orden ---
 [SCGO] Programacion de la orden de servicio:
 [SCGO] Fecha de servicio (AAAA-MM-DD):
-2026-06-10
+2026-11-20
 [SCGO] Hora inicio (HH:MM):
 08:00
 [SCGO] Hora fin (HH:MM):
 12:00
-[SCGO] Orden generada: id=1, estado=ASIGNADA, franja=2026-06-10 08:00-12:00
-[SCGO] Orden activa para el ciclo: id=1
+[SCGO] Orden generada: id=7, estado=ASIGNADA, franja=2026-11-20 08:00-12:00
+[SCGO] Orden activa para el ciclo: id=7
 ```
 
-**Paso 2.** Lista el personal operativo y, después de asignarlo, los activos disponibles. El id se elige de la lista que acaba de imprimir.
+**Paso 2.** Lista el personal operativo y, después de asignarlo, los activos disponibles. El id se elige de la lista que acaba de imprimir. En el seed nuevo, Valeria Ruiz está activa y no tiene orden ese día.
 
 ```
 [SCGO] --- Paso 2/3: CU007 Asignar recursos ---
-[SCGO]   id=1 | Carlos Gomez | ACTIVO
-[SCGO]   id=2 | Marta Diaz | ACTIVO
+[SCGO]   id=1 | Ramiro Sosa | ACTIVO
+[SCGO]   id=2 | Valeria Ruiz | ACTIVO
 [SCGO] ID de personal a asignar:
-1
-[SCGO] Recurso asignado correctamente a la orden 1
-[SCGO]   id=1 | Camioneta Hilux AB123CD | DISPONIBLE
-[SCGO]   id=2 | Cortadora de cesped industrial | DISPONIBLE
+2
+[SCGO] Recurso asignado correctamente a la orden 7
+[SCGO]   id=1 | Camioneta Ranger AC456EF | DISPONIBLE
+[SCGO]   id=2 | Utilitario Kangoo AD789GH | DISPONIBLE
 [SCGO] ID de activo a asignar:
-1
-[SCGO] Recurso asignado correctamente a la orden 1
+2
+[SCGO] Recurso asignado correctamente a la orden 7
 ```
 
-**Paso 3.** Pide horas, materiales (Enter los omite) y si hubo avería. Con `s`, el detalle es obligatorio. Después lista solo los activos de esa orden y pide ids hasta que se ingresa `0`. Un id repetido no se vuelve a tomar: avisa `El activo id=1 ya fue indicado.` y repregunta.
+**Paso 3.** Pide horas, materiales (Enter los omite) y si hubo avería. Con `s`, el detalle es obligatorio. Después lista solo los activos de esa orden y pide ids hasta que se ingresa `0`. Un id repetido no se vuelve a tomar: avisa `El activo id=2 ya fue indicado.` y repregunta.
 
 ```
 [SCGO] --- Paso 3/3: CU008 Cerrar orden ---
@@ -245,18 +253,18 @@ La opción **5** recorre CU006, CU007 y CU008 sin volver al menú. Con los datos
 [SCGO] Hubo averia en algun activo? (s/n):
 s
 [SCGO] Detalle de la averia:
-Falla bomba nafta
-[SCGO] --- Activos asignados a la orden 1 ---
-[SCGO]   id=1 | Camioneta Hilux AB123CD | DISPONIBLE
+Falla en la bomba de la hidrolavadora
+[SCGO] --- Activos asignados a la orden 7 ---
+[SCGO]   id=2 | Utilitario Kangoo AD789GH | DISPONIBLE
 [SCGO] ID de activo averiado, 0 para terminar:
-1
+2
 [SCGO] ID de activo averiado, 0 para terminar:
 0
-[SCGO] Orden 1 cerrada correctamente (FINALIZADA). Activos enviados a reparacion: [1]
-[SCGO] Ciclo completo exitoso. Orden 1 FINALIZADA.
+[SCGO] Orden 7 cerrada correctamente (FINALIZADA). Activos enviados a reparacion: [2]
+[SCGO] Ciclo completo exitoso. Orden 7 FINALIZADA.
 ```
 
-Con avería `n` no pide detalle ni ids de activos. El cierre queda en `Orden 1 cerrada correctamente (FINALIZADA)` y la línea de éxito del ciclo es la misma.
+Con avería `n` no pide detalle ni ids de activos. El cierre queda en `Orden 7 cerrada correctamente (FINALIZADA)` y la línea de éxito del ciclo es la misma. Las otras etiquetas (`[E02]` a `[E13]`) están para probar rechazos; la guía está en el script 02.
 
 ### Uso paso a paso (opciones individuales)
 
@@ -359,9 +367,9 @@ Los tests de integración se omiten automáticamente si no hay conexión JDBC co
 | Problema | Causa probable | Qué hacer |
 |----------|----------------|-----------|
 | Error al conectar JDBC | `database.properties` ausente, credenciales incorrectas o la base no existe | Verificar host, puerto, usuario y clave; crear la base si falta |
-| El enforcer pide Java 17, o `class file version 61.0` / `up to 55.0` | `JAVA_HOME` apunta a un JDK anterior a 17 | Instalar JDK 17, exportar `JAVA_HOME` y correr `mvn clean compile` |
+| El enforcer pide Java 17, `class file version 61.0` / `up to 55.0`, o `ClassNotFoundException: com.servihome.scgo.Main` después de `clean` | `JAVA_HOME` apunta a un JDK anterior a 17 (a menudo lo vuelve a poner `/etc/environment` en cada terminal) | Exportar `JAVA_HOME` a un JDK 17 o posterior y volver a correr `mvn clean compile` antes de `exec:java` |
 | "No hay solicitudes PENDIENTES" | La BD ya tiene solicitudes programadas | Opción 4 para consultar, o vaciar tablas para recargar seed |
-| Asignación rechazada | Recurso no operativo o solapamiento | Probar personal `1`/`2`, activos `1`/`2`; revisar horarios |
+| Asignación rechazada | Recurso no operativo o solapamiento | Elegir un recurso `ACTIVO` o `DISPONIBLE` de la opción 4 y una franja que no cruce una orden `ASIGNADA`. Hernán Villalba, Andrea Costa, el furgón Sprinter y el generador portátil se rechazan |
 | `horaFin` inválido | R3 incumplida | Usar hora fin posterior a hora inicio |
 
 ## Fuera de alcance (MVP)

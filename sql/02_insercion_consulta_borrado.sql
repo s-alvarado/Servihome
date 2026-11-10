@@ -108,8 +108,15 @@ WHERE a.estado <> 'Disponible';
 
 
 -- =====================================================================
--- 3) BORRADO DE DATOS DE PRUEBA Y VERIFICACION
+-- 3) BAJA LOGICA, BORRADO DE DATOS DE PRUEBA Y VERIFICACION
 -- =====================================================================
+
+-- Baja logica de un cliente (RF001): no se borra para conservar
+-- el historial de solicitudes y ordenes que lo referencian.
+UPDATE cliente SET activo = FALSE WHERE id_cliente = 2;
+SELECT id_cliente, razon_social, activo FROM cliente;
+
+-- Borrado fisico: solo para limpiar los datos de prueba.
 -- Se borra en orden inverso a la creacion para respetar las claves foraneas.
 
 DELETE FROM cierre_orden;

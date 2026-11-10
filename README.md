@@ -104,6 +104,10 @@ Al iniciar, `DatabaseBootstrap`:
 
 Si la BD ya tiene datos cargados manualmente (por ejemplo, con scripts SQL propios), el seed **no** se vuelve a insertar. Usá la opción **4** del menú para consultar el estado actual.
 
+## Scripts SQL
+
+`sql/01_creacion_tablas.sql` crea el esquema. `sql/02_insercion_consulta_borrado.sql` inserta datos de prueba, muestra consultas y, antes del borrado físico, deja un ejemplo de **baja lógica** de cliente (RF001): `UPDATE cliente SET activo = FALSE WHERE id_cliente = 2`. El cliente no se elimina para conservar el historial que lo referencia.
+
 ## Compilación y ejecución
 
 ### Con Maven

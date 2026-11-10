@@ -51,30 +51,51 @@ com.servihome.scgo
 
 ## Requisitos previos
 
-- JDK 17 o superior
+- **JDK 17.** El `pom.xml` fija `maven.compiler.release` en 17, así que el bytecode es el de Java 17. Maven tiene que arrancar con ese JDK en `JAVA_HOME`: mira esa variable, no el `java` del `PATH`.
 - MySQL 8.x accesible (local o Cloud; **no se asume localhost**)
 - Maven 3.8+ (opcional, recomendado)
 
-La base de datos debe llamarse `servihome` (o la que configures en `jdbc.database`). Al arrancar, la aplicación crea las tablas si no existen y carga datos demo si no hay clientes.
+Si `JAVA_HOME` queda en Java 11, el build corta al inicio: el enforcer de Maven exige Java 17 o posterior. Sin eso, `mvn exec:java` llega a cargar clases 17 (`class file version 61.0`) con un runtime que solo reconoce hasta la `55.0`.
+
+En Ubuntu, si el JDK 17 no está instalado:
+
+```bash
+sudo apt install openjdk-17-jdk
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH="$JAVA_HOME/bin:$PATH"
+mvn -version
+```
+
+La línea `Java version` tiene que ser 17. Un JDK más nuevo también compila este release; uno anterior, no.
+
+La base indicada en `jdbc.database` tiene que existir antes de arrancar. La aplicación crea las tablas si no existen y carga datos demo si no hay clientes; no crea la base.
 
 ## Configuración
 
 ### 1. Conexión JDBC
 
-Copiá la plantilla y completá tus credenciales:
+Copiá la plantilla y reemplazá host, puerto, usuario y clave por los de tu MySQL. Los valores que trae el archivo son un ejemplo local (`127.0.0.1`, puerto `3307`, usuario `root`); si tu servidor escucha en otro puerto (el de MySQL suele ser `3306`), cambialos. No hace falta que el host sea un servidor en la nube.
 
 ```bash
 cp src/main/resources/database.properties.example src/main/resources/database.properties
 ```
 
-Editá `database.properties`:
+Si la base todavía no existe:
+
+```sql
+CREATE DATABASE IF NOT EXISTS servihome
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+```
+
+La plantilla ya trae esas claves. Si tu MySQL no es el del ejemplo, editá solo estos valores:
 
 ```properties
-jdbc.host=tu-host-mysql.cloud
-jdbc.port=3306
+jdbc.host=127.0.0.1
+jdbc.port=3307
 jdbc.database=servihome
-jdbc.user=tu_usuario
-jdbc.password=tu_clave
+jdbc.user=root
+jdbc.password=scgo-local
 ```
 
 > `database.properties` está en `.gitignore` para no commitear credenciales.
@@ -98,10 +119,10 @@ Al iniciar, `DatabaseBootstrap`:
 | Entidad | IDs relevantes | Notas |
 |---------|----------------|-------|
 | Solicitud | `1` | Estado `PENDIENTE` — lista para CU006 |
-| Personal | `1` Carlos, `2` Marta | Operativos |
-| Personal | `3` Luis | En licencia (rechazado en CU007) |
-| Activos | `1` Camioneta, `2` Cortadora | Disponibles |
-| Activo | `3` Bomba | En reparación (rechazado en CU007) |
+| Personal | `1` Carlos Gomez, `2` Marta Diaz | Operativos (`ACTIVO`) |
+| Personal | `3` Luis Fernandez | En licencia (rechazado en CU007) |
+| Activos | `1` Camioneta Hilux AB123CD, `2` Cortadora de cesped industrial | Disponibles |
+| Activo | `3` Bomba sumergible para piscina | En reparación (rechazado en CU007) |
 
 Si la BD ya tiene datos cargados manualmente (por ejemplo, con scripts SQL propios), el seed **no** se vuelve a insertar. Usá la opción **4** del menú para consultar el estado actual.
 
@@ -126,8 +147,14 @@ La sección 1, corrida sola, deja la solicitud 1 en `Programada` y ya con una or
 
 ### Con Maven
 
+`mvn -version` tiene que mostrar Java 17. Si no, apuntá `JAVA_HOME` al JDK 17 y recompilá desde cero (`clean` descarta clases generadas con otro runtime).
+
 ```bash
-mvn compile
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH="$JAVA_HOME/bin:$PATH"
+mvn -version
+
+mvn clean compile
 mvn exec:java
 ```
 
@@ -169,16 +196,67 @@ Muestra las últimas 10 líneas del archivo de operaciones, o `(sin registros)` 
 
 ### Opción 5 — Ciclo completo guiado (recomendado)
 
-Recorre CU006 → CU007 → CU008 en una sola sesión. Ejemplo con datos demo:
+La opción **5** recorre CU006, CU007 y CU008 sin volver al menú. Con los datos demo, la consola lista lo pendiente y pide el id antes del paso 1:
 
-| Paso | Acción | Valores sugeridos |
-|------|--------|-------------------|
-| 1 — CU006 | Seleccionar solicitud y programar franja | Solicitud `1`, fecha `2026-06-10`, horario `08:00` – `12:00` |
-| 2 — CU007 | Asignar personal | ID `1` (Carlos Gómez) |
-| 2 — CU007 | Asignar activo | ID `1` (Camioneta Hilux) |
-| 3 — CU008 | Registrar cierre | Horas `4.0`, materiales opcional, avería `n` (si es `s`, indicar el activo `1`) |
+```
+[SCGO]   id=1 | Mantenimiento mensual de piscinas y parque | ingreso=2026-06-05 | estado=PENDIENTE
+[SCGO] Seleccione ID de solicitud:
+1
+```
 
-Al finalizar deberías ver: **"Ciclo completo exitoso. Orden X FINALIZADA."**
+**Paso 1.** Pide la franja, no vuelve a pedir la solicitud. Al confirmar muestra la orden y la deja como orden activa del ciclo.
+
+```
+[SCGO] --- Paso 1/3: CU006 Generar orden ---
+[SCGO] Programacion de la orden de servicio:
+[SCGO] Fecha de servicio (AAAA-MM-DD):
+2026-06-10
+[SCGO] Hora inicio (HH:MM):
+08:00
+[SCGO] Hora fin (HH:MM):
+12:00
+[SCGO] Orden generada: id=1, estado=ASIGNADA, franja=2026-06-10 08:00-12:00
+[SCGO] Orden activa para el ciclo: id=1
+```
+
+**Paso 2.** Lista el personal operativo y, después de asignarlo, los activos disponibles. El id se elige de la lista que acaba de imprimir.
+
+```
+[SCGO] --- Paso 2/3: CU007 Asignar recursos ---
+[SCGO]   id=1 | Carlos Gomez | ACTIVO
+[SCGO]   id=2 | Marta Diaz | ACTIVO
+[SCGO] ID de personal a asignar:
+1
+[SCGO] Recurso asignado correctamente a la orden 1
+[SCGO]   id=1 | Camioneta Hilux AB123CD | DISPONIBLE
+[SCGO]   id=2 | Cortadora de cesped industrial | DISPONIBLE
+[SCGO] ID de activo a asignar:
+1
+[SCGO] Recurso asignado correctamente a la orden 1
+```
+
+**Paso 3.** Pide horas, materiales (Enter los omite) y si hubo avería. Con `s`, el detalle es obligatorio. Después lista solo los activos de esa orden y pide ids hasta que se ingresa `0`. Un id repetido no se vuelve a tomar: avisa `El activo id=1 ya fue indicado.` y repregunta.
+
+```
+[SCGO] --- Paso 3/3: CU008 Cerrar orden ---
+[SCGO] Horas reales (ej. 4.5):
+4.0
+[SCGO] Materiales utilizados (Enter para omitir):
+[SCGO] Hubo averia en algun activo? (s/n):
+s
+[SCGO] Detalle de la averia:
+Falla bomba nafta
+[SCGO] --- Activos asignados a la orden 1 ---
+[SCGO]   id=1 | Camioneta Hilux AB123CD | DISPONIBLE
+[SCGO] ID de activo averiado, 0 para terminar:
+1
+[SCGO] ID de activo averiado, 0 para terminar:
+0
+[SCGO] Orden 1 cerrada correctamente (FINALIZADA). Activos enviados a reparacion: [1]
+[SCGO] Ciclo completo exitoso. Orden 1 FINALIZADA.
+```
+
+Con avería `n` no pide detalle ni ids de activos. El cierre queda en `Orden 1 cerrada correctamente (FINALIZADA)` y la línea de éxito del ciclo es la misma.
 
 ### Uso paso a paso (opciones individuales)
 
@@ -280,7 +358,8 @@ Los tests de integración se omiten automáticamente si no hay conexión JDBC co
 
 | Problema | Causa probable | Qué hacer |
 |----------|----------------|-----------|
-| Error al conectar JDBC | `database.properties` ausente o credenciales incorrectas | Verificar host, puerto, usuario y clave |
+| Error al conectar JDBC | `database.properties` ausente, credenciales incorrectas o la base no existe | Verificar host, puerto, usuario y clave; crear la base si falta |
+| El enforcer pide Java 17, o `class file version 61.0` / `up to 55.0` | `JAVA_HOME` apunta a un JDK anterior a 17 | Instalar JDK 17, exportar `JAVA_HOME` y correr `mvn clean compile` |
 | "No hay solicitudes PENDIENTES" | La BD ya tiene solicitudes programadas | Opción 4 para consultar, o vaciar tablas para recargar seed |
 | Asignación rechazada | Recurso no operativo o solapamiento | Probar personal `1`/`2`, activos `1`/`2`; revisar horarios |
 | `horaFin` inválido | R3 incumplida | Usar hora fin posterior a hora inicio |

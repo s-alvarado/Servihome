@@ -1,6 +1,7 @@
 package com.servihome.scgo.vista;
 
 import com.servihome.scgo.controlador.OrdenController;
+import com.servihome.scgo.enums.EstadoDevolucion;
 import com.servihome.scgo.enums.EstadoOrden;
 import com.servihome.scgo.enums.TipoRecurso;
 import com.servihome.scgo.excepcion.SolapamientoException;
@@ -11,9 +12,11 @@ import com.servihome.scgo.modelo.Personal;
 import com.servihome.scgo.modelo.Recurso;
 import com.servihome.scgo.modelo.Solicitud;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 
@@ -65,16 +68,44 @@ public class GestionOrdenView {
         }
     }
 
-    /** CU008: dispara cerrarOrden. */
+    /** CU008 sin averia. Conserva la firma anterior delegando en un arreglo vacio. */
     public void registrarCierre(int idOrden, CierreOrden cierre) {
+        registrarCierre(idOrden, cierre, new int[0]);
+    }
+
+    /** CU008: dispara cerrarOrden, con los activos averiados si los hay. */
+    public void registrarCierre(int idOrden, CierreOrden cierre, int[] idsActivosAveriados) {
         try {
-            controller.cerrarOrden(idOrden, cierre);
-            mostrarResultado("Orden " + idOrden + " cerrada correctamente (FINALIZADA)");
+            controller.cerrarOrden(idOrden, cierre, idsActivosAveriados);
+            if (idsActivosAveriados.length == 0) {
+                mostrarResultado("Orden " + idOrden + " cerrada correctamente (FINALIZADA)");
+            } else {
+                mostrarResultado("Orden " + idOrden
+                        + " cerrada correctamente (FINALIZADA). Activos enviados a reparacion: "
+                        + formatearIds(idsActivosAveriados));
+            }
         } catch (IllegalArgumentException e) {
             mostrarResultado("Error de validacion al cerrar: " + e.getMessage());
         } catch (RuntimeException e) {
             mostrarResultado("Error al cerrar orden: " + e.getMessage());
         }
+    }
+
+    /**
+     * Lectura unica del cierre (opcion 3 y ciclo guiado). Si hay averia, los ids
+     * se capturan en una lista de tamano variable y se copian a un arreglo fijo
+     * antes de llamar al controlador.
+     */
+    public void capturarYRegistrarCierre(int idOrden) {
+        CierreOrden cierre = leerCierre();
+        int[] idsActivosAveriados = new int[0];
+        if (cierre.isAveria()) {
+            idsActivosAveriados = capturarActivosAveriados(idOrden);
+            if (idsActivosAveriados == null) {
+                return;
+            }
+        }
+        registrarCierre(idOrden, cierre, idsActivosAveriados);
     }
 
     /** CPS03: ciclo completo CU006 -> CU007 -> CU008 en consola. */
@@ -114,8 +145,7 @@ public class GestionOrdenView {
         asignarRecurso(idOrden, idActivo, TipoRecurso.ACTIVO);
 
         mostrarResultado("--- Paso 3/3: CU008 Cerrar orden ---");
-        CierreOrden cierre = leerCierreBasico();
-        registrarCierre(idOrden, cierre);
+        capturarYRegistrarCierre(idOrden);
 
         OrdenTrabajo finalizada = controller.buscarOrden(idOrden);
         if (finalizada != null && finalizada.getEstado() == EstadoOrden.FINALIZADA) {
@@ -196,18 +226,81 @@ public class GestionOrdenView {
         }
     }
 
-    private CierreOrden leerCierreBasico() {
+    private CierreOrden leerCierre() {
         CierreOrden cierre = new CierreOrden();
-        cierre.setHorasReales(leerDecimal("Horas reales (ej. 4.0): "));
-        cierre.setMateriales(leerLineaOpcional("Materiales (Enter para omitir): "));
-        cierre.setAveria(leerSiNo("Hubo averia? (s/n): "));
+        cierre.setHorasReales(leerDecimal("Horas reales (ej. 4.5): "));
+        cierre.setMateriales(leerLineaOpcional("Materiales utilizados (Enter para omitir): "));
+        cierre.setAveria(leerSiNo("Hubo averia en algun activo? (s/n): "));
         if (cierre.isAveria()) {
-            cierre.setDetalleAveria(leerLineaObligatoria("Detalle averia: "));
-            cierre.setEstadoDevolucion(com.servihome.scgo.enums.EstadoDevolucion.AVERIADO);
+            cierre.setDetalleAveria(leerLineaObligatoria("Detalle de la averia: "));
+            cierre.setEstadoDevolucion(EstadoDevolucion.AVERIADO);
         } else {
-            cierre.setEstadoDevolucion(com.servihome.scgo.enums.EstadoDevolucion.BUEN_ESTADO);
+            cierre.setEstadoDevolucion(EstadoDevolucion.BUEN_ESTADO);
         }
         return cierre;
+    }
+
+    /**
+     * @return arreglo de ids, o null si el usuario no completo una seleccion valida
+     */
+    private int[] capturarActivosAveriados(int idOrden) {
+        List<Activo> asignados = controller.listarActivosDeOrden(idOrden);
+        mostrarResultado("--- Activos asignados a la orden " + idOrden + " ---");
+        mostrarActivos(asignados);
+        if (asignados.isEmpty()) {
+            mostrarResultado("La orden no tiene activos asignados. No se puede registrar la averia.");
+            return null;
+        }
+
+        // La cantidad de averiados no se conoce de antemano: se usa una lista.
+        ArrayList<Integer> capturados = new ArrayList<>();
+        while (true) {
+            int id = leerEntero("ID de activo averiado, 0 para terminar: ");
+            if (id == 0) {
+                break;
+            }
+            if (!activoEnLista(asignados, id)) {
+                mostrarResultado("El activo id=" + id + " no esta asignado a la orden.");
+                continue;
+            }
+            if (capturados.contains(id)) {
+                mostrarResultado("El activo id=" + id + " ya fue indicado.");
+                continue;
+            }
+            capturados.add(id);
+        }
+        if (capturados.isEmpty()) {
+            mostrarResultado("Debe indicar al menos un activo averiado.");
+            return null;
+        }
+
+        // I4: arreglo de tamano fijo; la lista solo sirvio para capturar
+        int[] ids = new int[capturados.size()];
+        for (int i = 0; i < capturados.size(); i++) {
+            ids[i] = capturados.get(i);
+        }
+        return ids;
+    }
+
+    private boolean activoEnLista(List<Activo> asignados, int idActivo) {
+        for (Activo activo : asignados) {
+            if (activo.getId() == idActivo) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String formatearIds(int[] ids) {
+        StringBuilder texto = new StringBuilder("[");
+        for (int i = 0; i < ids.length; i++) {
+            if (i > 0) {
+                texto.append(", ");
+            }
+            texto.append(ids[i]);
+        }
+        texto.append(']');
+        return texto.toString();
     }
 
     private int leerEntero(String prompt) {
@@ -221,11 +314,11 @@ public class GestionOrdenView {
         }
     }
 
-    private java.math.BigDecimal leerDecimal(String prompt) {
+    private BigDecimal leerDecimal(String prompt) {
         while (true) {
             mostrarResultado(prompt);
             try {
-                return new java.math.BigDecimal(scanner.nextLine().trim().replace(',', '.'));
+                return new BigDecimal(scanner.nextLine().trim().replace(',', '.'));
             } catch (NumberFormatException e) {
                 mostrarResultado("Ingrese un numero decimal valido.");
             }

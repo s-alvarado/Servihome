@@ -8,6 +8,7 @@ import com.servihome.scgo.dao.DaoException;
 import com.servihome.scgo.dao.OrdenTrabajoDAO;
 import com.servihome.scgo.dao.PersonalDAO;
 import com.servihome.scgo.dao.SolicitudDAO;
+import com.servihome.scgo.enums.EstadoActivo;
 import com.servihome.scgo.enums.EstadoDevolucion;
 import com.servihome.scgo.enums.EstadoOrden;
 import com.servihome.scgo.enums.EstadoSolicitud;
@@ -146,10 +147,19 @@ public class OrdenController {
     }
 
     /**
-     * CU008: cierre transaccional (R4). Registrar el cierre y pasar la orden a
-     * FINALIZADA forman una unica operacion atomica (ver bloque transaccional abajo).
+     * CU008 sin averia de activos. Delega en la sobrecarga con un arreglo vacio
+     * para no romper a quien ya cerraba la orden solo con el cierre.
      */
     public void cerrarOrden(int idOrden, CierreOrden cierre) {
+        cerrarOrden(idOrden, cierre, new int[0]);
+    }
+
+    /**
+     * CU008: cierre transaccional (R4) y, si hay averia (R6), los activos
+     * indicados pasan a EN_REPARACION en la misma transaccion. El arreglo tiene
+     * tamano fijo porque la vista ya termino de capturar los ids.
+     */
+    public void cerrarOrden(int idOrden, CierreOrden cierre, int[] idsActivosAveriados) {
         OrdenTrabajo orden = ordenDAO.buscarPorId(idOrden);
         if (orden == null) {
             throw new IllegalArgumentException("Orden no encontrada: id=" + idOrden);
@@ -158,19 +168,30 @@ public class OrdenController {
             throw new IllegalArgumentException("Solo se puede cerrar una orden ASIGNADA");
         }
         validarCierre(cierre);
+        validarR6(idOrden, cierre, idsActivosAveriados);
 
         cierre.setIdOrden(idOrden);
 
-        // Atomicidad del cierre (R4): insertar el cierre y marcar la orden como
-        // FINALIZADA deben ser indivisibles. Sin transaccion podria persistirse el
-        // cierre y quedar la orden ASIGNADA. InnoDB es el motor que lo permite.
+        // Atomicidad del cierre (R4 + RF009): el cierre, la orden FINALIZADA y los
+        // activos en reparacion se confirman juntos. Si uno falla, no queda una
+        // orden cerrada con el activo todavia disponible.
         ejecutarEnTransaccion(
                 "Error en rollback del cierre orden id=" + idOrden,
                 "Error transaccional al cerrar orden id=" + idOrden,
                 conn -> {
                     cierreDAO.insertar(cierre, conn);
                     ordenDAO.actualizarEstado(idOrden, EstadoOrden.FINALIZADA, conn);
+                    // I4: arreglo de ids de activos averiados, tamano ya conocido
+                    for (int i = 0; i < idsActivosAveriados.length; i++) {
+                        activoDAO.actualizarEstado(
+                                idsActivosAveriados[i], EstadoActivo.EN_REPARACION, conn);
+                    }
                 });
+    }
+
+    /** Activos asignados a la orden, para que la vista arme la seleccion de averia. */
+    public List<Activo> listarActivosDeOrden(int idOrden) {
+        return activoDAO.listarPorOrden(idOrden);
     }
 
     public List<Solicitud> listarSolicitudesPendientes() {
@@ -250,6 +271,46 @@ public class OrdenController {
                 throw new IllegalArgumentException("R5: estadoDevolucion debe ser AVERIADO cuando hay averia");
             }
         }
+    }
+
+    /**
+     * R6 se valida antes de abrir la transaccion: un id ajeno a la orden no debe
+     * llegar a persistir el cierre.
+     */
+    private void validarR6(int idOrden, CierreOrden cierre, int[] idsActivosAveriados) {
+        if (idsActivosAveriados == null) {
+            throw new IllegalArgumentException("R6: la lista de activos averiados no puede ser nula");
+        }
+        if (cierre.isAveria()) {
+            if (idsActivosAveriados.length == 0) {
+                throw new IllegalArgumentException(
+                        "R6: si hay averia debe indicarse al menos un activo");
+            }
+            List<Activo> asignados = activoDAO.listarPorOrden(idOrden);
+            if (asignados.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "R6: la orden " + idOrden + " no tiene activos asignados para reportar averia");
+            }
+            for (int i = 0; i < idsActivosAveriados.length; i++) {
+                int idActivo = idsActivosAveriados[i];
+                if (!activoAsignado(asignados, idActivo)) {
+                    throw new IllegalArgumentException(
+                            "R6: el activo id=" + idActivo + " no esta asignado a la orden " + idOrden);
+                }
+            }
+        } else if (idsActivosAveriados.length > 0) {
+            throw new IllegalArgumentException(
+                    "R6: sin averia el arreglo de activos debe estar vacio");
+        }
+    }
+
+    private boolean activoAsignado(List<Activo> asignados, int idActivo) {
+        for (Activo activo : asignados) {
+            if (activo.getId() == idActivo) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

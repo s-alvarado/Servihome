@@ -10,7 +10,7 @@ El sistema implementa tres casos de uso encadenados:
 |-------------|-------------|
 | **CU006** | Generar orden de trabajo a partir de una solicitud `PENDIENTE` |
 | **CU007** | Asignar personal o activos validando disponibilidad y solapamiento horario |
-| **CU008** | Cerrar la orden de forma transaccional (cierre + estado `FINALIZADA`) |
+| **CU008** | Cerrar la orden de forma transaccional (cierre + estado `FINALIZADA`). Si hay avería, los activos indicados pasan a `EN_REPARACION` en la misma transacción |
 
 ## Stack tecnológico
 
@@ -150,7 +150,7 @@ Recorre CU006 → CU007 → CU008 en una sola sesión. Ejemplo con datos demo:
 | 1 — CU006 | Seleccionar solicitud y programar franja | Solicitud `1`, fecha `2026-06-10`, horario `08:00` – `12:00` |
 | 2 — CU007 | Asignar personal | ID `1` (Carlos Gómez) |
 | 2 — CU007 | Asignar activo | ID `1` (Camioneta Hilux) |
-| 3 — CU008 | Registrar cierre | Horas `4.0`, materiales opcional, avería `n` |
+| 3 — CU008 | Registrar cierre | Horas `4.0`, materiales opcional, avería `n` (si es `s`, indicar el activo `1`) |
 
 Al finalizar deberías ver: **"Ciclo completo exitoso. Orden X FINALIZADA."**
 
@@ -186,8 +186,9 @@ Al finalizar deberías ver: **"Ciclo completo exitoso. Orden X FINALIZADA."**
    - Horas reales (decimal, ej. `4.5`)
    - Materiales (opcional)
    - Avería (`s`/`n`); si hay avería, el detalle es obligatorio
+3. Si hay avería, el sistema muestra los activos asignados a esa orden. Indicá uno o más IDs (solo de esa lista, sin repetir) y `0` para terminar.
 
-**Resultado:** la orden pasa a `FINALIZADA` y se persiste el cierre en una sola transacción (todo o nada).
+**Resultado:** la orden pasa a `FINALIZADA` y se persiste el cierre en una sola transacción (todo o nada). Cada activo averiado queda en `EN_REPARACION`. El mensaje final lista esos IDs.
 
 ## Reglas de negocio críticas
 
@@ -198,6 +199,7 @@ Al finalizar deberías ver: **"Ciclo completo exitoso. Orden X FINALIZADA."**
 | **R3** | `horaFin > horaInicio` en toda orden |
 | **R4** | Cierre transaccional: insertar cierre + actualizar orden en una sola transacción |
 | **R5** | Si `averia = true`, `detalleAveria` es obligatorio y `estadoDevolucion` debe ser `AVERIADO` |
+| **R6** | Con avería, al menos un activo y todos asignados a la orden; sin avería, el arreglo de activos queda vacío. El cambio de estado de esos activos entra en la misma transacción del cierre |
 
 ## Pruebas
 

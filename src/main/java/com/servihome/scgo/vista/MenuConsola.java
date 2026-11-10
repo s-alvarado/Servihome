@@ -1,11 +1,8 @@
 package com.servihome.scgo.vista;
 
 import com.servihome.scgo.controlador.OrdenController;
-import com.servihome.scgo.enums.EstadoDevolucion;
 import com.servihome.scgo.enums.TipoRecurso;
-import com.servihome.scgo.modelo.CierreOrden;
 
-import java.math.BigDecimal;
 import java.util.Scanner;
 
 /**
@@ -97,22 +94,7 @@ public class MenuConsola {
             view.mostrarEstadoSistema();
         }
         int idOrden = leerEntero("ID de orden: ");
-        CierreOrden cierre = leerCierre();
-        view.registrarCierre(idOrden, cierre);
-    }
-
-    private CierreOrden leerCierre() {
-        CierreOrden cierre = new CierreOrden();
-        cierre.setHorasReales(leerDecimal("Horas reales (ej. 4.5): "));
-        cierre.setMateriales(leerLineaOpcional("Materiales utilizados (Enter para omitir): "));
-        cierre.setAveria(leerSiNo("Hubo averia en algun activo? (s/n): "));
-        if (cierre.isAveria()) {
-            cierre.setDetalleAveria(leerLineaObligatoria("Detalle de la averia: "));
-            cierre.setEstadoDevolucion(EstadoDevolucion.AVERIADO);
-        } else {
-            cierre.setEstadoDevolucion(EstadoDevolucion.BUEN_ESTADO);
-        }
-        return cierre;
+        view.capturarYRegistrarCierre(idOrden);
     }
 
     private TipoRecurso leerTipoRecurso() {
@@ -138,49 +120,6 @@ public class MenuConsola {
             } catch (NumberFormatException e) {
                 view.mostrarResultado("Ingrese un numero entero valido.");
             }
-        }
-    }
-
-    private BigDecimal leerDecimal(String prompt) {
-        while (true) {
-            view.mostrarResultado(prompt);
-            String linea = scanner.nextLine().trim().replace(',', '.');
-            try {
-                return new BigDecimal(linea);
-            } catch (NumberFormatException e) {
-                view.mostrarResultado("Ingrese un numero decimal valido.");
-            }
-        }
-    }
-
-    private boolean leerSiNo(String prompt) {
-        while (true) {
-            view.mostrarResultado(prompt);
-            String respuesta = scanner.nextLine().trim().toLowerCase();
-            if (respuesta.equals("s") || respuesta.equals("si")) {
-                return true;
-            }
-            if (respuesta.equals("n") || respuesta.equals("no")) {
-                return false;
-            }
-            view.mostrarResultado("Responda s o n.");
-        }
-    }
-
-    private String leerLineaOpcional(String prompt) {
-        view.mostrarResultado(prompt);
-        String linea = scanner.nextLine().trim();
-        return linea.isEmpty() ? null : linea;
-    }
-
-    private String leerLineaObligatoria(String prompt) {
-        while (true) {
-            view.mostrarResultado(prompt);
-            String linea = scanner.nextLine().trim();
-            if (!linea.isEmpty()) {
-                return linea;
-            }
-            view.mostrarResultado("Este campo es obligatorio.");
         }
     }
 }

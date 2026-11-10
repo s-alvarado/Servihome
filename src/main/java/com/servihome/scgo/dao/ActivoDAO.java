@@ -1,6 +1,7 @@
 package com.servihome.scgo.dao;
 
 import com.servihome.scgo.config.DatabaseConfig;
+import com.servihome.scgo.enums.EstadoActivo;
 import com.servihome.scgo.modelo.Activo;
 
 import java.sql.Connection;
@@ -39,6 +40,18 @@ public class ActivoDAO implements DAO<Activo> {
 
     private static final String UPDATE = """
             UPDATE activo SET id_tipo = ?, descripcion = ?, estado = ? WHERE id_activo = ?
+            """;
+
+    private static final String SELECT_POR_ORDEN = """
+            SELECT a.id_activo, a.id_tipo, a.descripcion, a.estado
+            FROM activo a
+            JOIN asignacion_activo aa ON a.id_activo = aa.id_activo
+            WHERE aa.id_orden = ?
+            ORDER BY a.id_activo
+            """;
+
+    private static final String UPDATE_ESTADO = """
+            UPDATE activo SET estado = ? WHERE id_activo = ?
             """;
 
     @Override
@@ -98,6 +111,39 @@ public class ActivoDAO implements DAO<Activo> {
 
     public List<Activo> listarTodos() {
         return consultarLista(SELECT_TODOS);
+    }
+
+    /** Activos asignados a la orden (CU008 / R6). Devuelve ArrayList de tamano variable. */
+    public List<Activo> listarPorOrden(int idOrden) {
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SELECT_POR_ORDEN)) {
+            ps.setInt(1, idOrden);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<Activo> lista = new ArrayList<>();
+                while (rs.next()) {
+                    lista.add(mapRow(rs));
+                }
+                return lista;
+            }
+        } catch (SQLException e) {
+            throw new DaoException("Error al listar activos de la orden id=" + idOrden, e);
+        }
+    }
+
+    /**
+     * Cambia el estado dentro de la transaccion del cierre. Exige una fila:
+     * un id inexistente debe provocar rollback del cierre completo.
+     */
+    public void actualizarEstado(int idActivo, EstadoActivo estado, Connection conn) {
+        try (PreparedStatement ps = conn.prepareStatement(UPDATE_ESTADO)) {
+            ps.setString(1, EnumMapper.toDb(estado));
+            ps.setInt(2, idActivo);
+            if (ps.executeUpdate() != 1) {
+                throw new DaoException("Activo no encontrado: id=" + idActivo);
+            }
+        } catch (SQLException e) {
+            throw new DaoException("Error al actualizar estado activo id=" + idActivo, e);
+        }
     }
 
     private List<Activo> consultarLista(String sql) {
